@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
@@ -19,30 +19,30 @@ router = APIRouter(prefix="/superadmin", tags=["SuperAdmin"])
 @router.get("/dashboard", response_model=DashboardStats)
 async def dashboard(
     current_user: AppUser = Depends(require_superadmin),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """Retorna las estadísticas generales del dashboard."""
-    return tenant_service.stats_dashboard(db)
+    return await tenant_service.stats_dashboard(db)
 
 
 @router.get("/tenants", response_model=list[TenantListItem])
 async def listar_tenants(
     current_user: AppUser = Depends(require_superadmin),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """Lista todos los tenants con su cantidad de usuarios."""
-    return tenant_service.listar_tenants(db)
+    return await tenant_service.listar_tenants(db)
 
 
 @router.post("/tenants", response_model=TenantResponse, status_code=status.HTTP_201_CREATED)
 async def crear_tenant(
     datos: TenantCreate,
     current_user: AppUser = Depends(require_superadmin),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """Crea un nuevo tenant con su usuario admin."""
     try:
-        tenant = tenant_service.crear_tenant(db, datos)
+        tenant = await tenant_service.crear_tenant(db, datos)
         return TenantResponse.model_validate(tenant)
     except IntegrityError:
         raise HTTPException(
@@ -55,10 +55,10 @@ async def crear_tenant(
 async def obtener_tenant(
     tenant_id: int,
     current_user: AppUser = Depends(require_superadmin),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """Obtiene los detalles de un tenant específico."""
-    tenant = tenant_service.obtener_tenant(db, tenant_id)
+    tenant = await tenant_service.obtener_tenant(db, tenant_id)
     if tenant is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -71,10 +71,10 @@ async def obtener_tenant(
 async def toggle_activo(
     tenant_id: int,
     current_user: AppUser = Depends(require_superadmin),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """Activa o desactiva un tenant y sus usuarios asociados."""
-    tenant = tenant_service.toggle_tenant_activo(db, tenant_id)
+    tenant = await tenant_service.toggle_tenant_activo(db, tenant_id)
     if tenant is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

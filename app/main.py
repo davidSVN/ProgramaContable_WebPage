@@ -14,7 +14,7 @@ load_dotenv()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Evento de inicio: crea las tablas en la BD."""
-    init_db()
+    await init_db()
     yield
 
 

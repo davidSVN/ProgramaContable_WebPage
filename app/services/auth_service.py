@@ -4,7 +4,8 @@ from typing import Optional
 
 import bcrypt
 from jose import JWTError, jwt
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from dotenv import load_dotenv
 
 from app.models import AppUser
@@ -45,13 +46,14 @@ def decode_token_jwt(token: str) -> Optional[dict]:
         return None
 
 
-def login(db: Session, email: str, password: str) -> Optional[AppUser]:
+async def login(db: AsyncSession, email: str, password: str) -> Optional[AppUser]:
     """
     Autentica un usuario por email y contraseña.
     Verifica que el usuario exista, esté activo y que su tenant esté activo.
     Retorna None si cualquier validación falla.
     """
-    user = db.query(AppUser).filter(AppUser.email == email).first()
+    result = await db.execute(select(AppUser).where(AppUser.email == email))
+    user = result.scalars().first()
     if not user:
         return None
 
@@ -63,6 +65,8 @@ def login(db: Session, email: str, password: str) -> Optional[AppUser]:
 
     # Si el usuario pertenece a un tenant, verificar que el tenant esté activo
     if user.tenant_id is not None:
+        # Acceder a la relación cargada (eager) o cargar explícitamente
+        await db.refresh(user, ["tenant"])
         if user.tenant is None or not user.tenant.is_active:
             return None
 

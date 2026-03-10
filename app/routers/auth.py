@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_user
@@ -11,9 +11,9 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(datos: LoginRequest, db: Session = Depends(get_db)):
+async def login(datos: LoginRequest, db: AsyncSession = Depends(get_db)):
     """Autentica un usuario y retorna un token JWT."""
-    user = auth_service.login(db, datos.email, datos.password)
+    user = await auth_service.login(db, datos.email, datos.password)
 
     if user is None:
         raise HTTPException(
