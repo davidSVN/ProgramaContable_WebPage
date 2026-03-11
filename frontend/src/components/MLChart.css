@@ -1,0 +1,139 @@
+.ml-section {
+  padding: 80px 24px;
+  background: var(--black);
+  color: var(--white);
+}
+
+.ml-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.ml-header {
+  margin-bottom: 40px;
+}
+
+.ml-badge {
+  display: inline-block;
+  background: var(--orange);
+  color: var(--white);
+  padding: 4px 14px;
+  border: var(--border);
+  border-radius: var(--radius);
+  font-size: 0.82rem;
+  font-weight: 700;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.ml-title {
+  font-family: var(--font-head);
+  font-size: clamp(1.8rem, 3.5vw, 2.8rem);
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--white);
+  margin-bottom: 14px;
+}
+
+.ml-subtitle {
+  color: rgba(255,255,255,0.65);
+  font-size: 1rem;
+  max-width: 600px;
+  line-height: 1.6;
+}
+
+/* ─── Chart ──────────────────────────────────────────── */
+.ml-chart-card {
+  background: rgba(255,255,255,0.04);
+  border: 1.5px solid rgba(255,255,255,0.15);
+  border-radius: 8px;
+  padding: 24px;
+  margin-bottom: 32px;
+}
+
+.ml-chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.ml-chart-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: rgba(255,255,255,0.8);
+}
+
+.ml-chart-accuracy {
+  font-size: 0.8rem;
+  color: #38A169;
+  font-weight: 700;
+  background: rgba(56,161,105,0.15);
+  padding: 2px 10px;
+  border-radius: 20px;
+  border: 1px solid rgba(56,161,105,0.3);
+}
+
+.ml-chart-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ml-svg {
+  width: 100%;
+  height: 140px;
+}
+
+.ml-axis {
+  display: flex;
+  justify-content: space-around;
+  font-size: 0.72rem;
+  color: rgba(255,255,255,0.4);
+  padding: 0 20px;
+}
+
+/* ─── Insight Cards ──────────────────────────────────── */
+.ml-insights {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.ml-insight-card {
+  background: rgba(255,255,255,0.05);
+  border: 1.5px solid rgba(255,255,255,0.15);
+  padding: 20px;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.ml-insight-card:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: var(--shadow);
+}
+
+.ml-insight-icon {
+  font-size: 1.8rem;
+  flex-shrink: 0;
+}
+
+.ml-insight-title {
+  font-family: var(--font-head);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--white);
+  margin-bottom: 4px;
+}
+
+.ml-insight-desc {
+  font-size: 0.82rem;
+  color: rgba(255,255,255,0.55);
+}
+
+@media (max-width: 768px) {
+  .ml-insights { grid-template-columns: 1fr; }
+}

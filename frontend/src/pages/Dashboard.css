@@ -1,0 +1,220 @@
+.dash-page {
+  min-height: 100vh;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Topbar ─────────────────────────────────────────── */
+.dash-topbar {
+  background: var(--surface);
+  border-bottom: var(--border);
+  box-shadow: 0 2px 0 var(--black);
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.dash-logo {
+  font-family: var(--font-head);
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: var(--black);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+}
+
+.dash-topbar__right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.dash-user-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dash-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--orange);
+  border: 2px solid var(--black);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--white);
+  box-shadow: var(--shadow-sm);
+}
+
+.dash-username {
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--black);
+}
+
+.dash-logout {
+  padding: 8px 16px;
+  font-size: 0.88rem;
+}
+
+/* ─── Main ───────────────────────────────────────────── */
+.dash-main {
+  flex: 1;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 40px 24px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+/* ─── Welcome ────────────────────────────────────────── */
+.dash-welcome__title {
+  font-family: var(--font-head);
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 800;
+  color: var(--black);
+  line-height: 1.1;
+  margin-bottom: 8px;
+}
+
+.dash-welcome__sub {
+  color: var(--gray);
+  font-size: 1rem;
+  max-width: 540px;
+}
+
+/* ─── Stats ──────────────────────────────────────────── */
+.dash-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+.dash-stat-card {
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation-fill-mode: both;
+}
+
+.dash-stat-card__icon { font-size: 2rem; }
+
+.dash-stat-card__value {
+  font-family: var(--font-head);
+  font-size: 2.2rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.dash-stat-card__label {
+  font-size: 0.88rem;
+  color: var(--gray);
+  font-weight: 500;
+}
+
+/* ─── Coming soon ────────────────────────────────────── */
+.dash-coming-soon {
+  padding: 28px 32px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  background: var(--black);
+  color: var(--white);
+  border-color: var(--black);
+  box-shadow: var(--shadow-lg);
+  animation-fill-mode: both;
+}
+
+.dash-coming-soon__icon { font-size: 3rem; flex-shrink: 0; }
+
+.dash-coming-soon__title {
+  font-family: var(--font-head);
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--white);
+  margin-bottom: 6px;
+}
+
+.dash-coming-soon__sub {
+  font-size: 0.88rem;
+  color: rgba(255,255,255,0.65);
+  line-height: 1.5;
+}
+
+/* ─── Preview grid ───────────────────────────────────── */
+.dash-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+.dash-preview-card {
+  padding: 22px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.dash-preview-card__icon { font-size: 1.8rem; }
+
+.dash-preview-card__title {
+  font-family: var(--font-head);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.dash-preview-card__badge {
+  font-size: 0.75rem;
+  color: var(--gray);
+  font-weight: 500;
+}
+
+/* ─── Loading ────────────────────────────────────────── */
+.dash-loading {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: var(--bg);
+  color: var(--gray);
+  font-size: 0.95rem;
+}
+
+.dash-loading__spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--gray-light);
+  border-top-color: var(--orange);
+  border-radius: 50%;
+  animation: spinLoader 0.8s linear infinite;
+}
+
+/* ─── Responsive ─────────────────────────────────────── */
+@media (max-width: 900px) {
+  .dash-preview-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 600px) {
+  .dash-stats { grid-template-columns: 1fr; }
+  .dash-preview-grid { grid-template-columns: repeat(2, 1fr); }
+  .dash-coming-soon { flex-direction: column; text-align: center; }
+  .dash-username { display: none; }
+}
