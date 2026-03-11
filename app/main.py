@@ -6,7 +6,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import init_db
-from app.routers import auth, superadmin
 
 load_dotenv()
 
@@ -40,8 +39,16 @@ app.add_middleware(
 
 # ─── Routers ──────────────────────────────────────────────────────────────────
 
+from app.routers import auth, superadmin, gastos, proveedores, servicios, usuarios, ordenes, b2b
+
 app.include_router(auth.router, prefix="/api")
 app.include_router(superadmin.router, prefix="/api")
+app.include_router(gastos.router, prefix="/api/gastos", tags=["Gastos"])
+app.include_router(proveedores.router, prefix="/api/proveedores", tags=["Proveedores"])
+app.include_router(servicios.router, prefix="/api/servicios", tags=["Servicios"])
+app.include_router(usuarios.router, prefix="/api/usuarios", tags=["Usuarios"])
+app.include_router(ordenes.router, prefix="/api/ordenes", tags=["Órdenes B2C"])
+app.include_router(b2b.router, prefix="/api/b2b", tags=["Facturación B2B"])
 
 
 # ─── Health Check ─────────────────────────────────────────────────────────────

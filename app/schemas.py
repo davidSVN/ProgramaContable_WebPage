@@ -73,3 +73,270 @@ class DashboardStats(BaseModel):
     tenants_inactivos: int
     total_usuarios: int
     tenants_por_plan: Dict[str, int]
+
+
+# ─── Gastos ───────────────────────────────────────────────────────────────────
+
+class GastoCreate(BaseModel):
+    spent_category: Optional[str] = None
+    spent_payment_method: str
+    spent_value: float
+    spent_general_name: Optional[str] = None
+    description: Optional[str] = None
+    spent_date: Optional[datetime] = None
+
+
+class GastoUpdate(BaseModel):
+    spent_category: Optional[str] = None
+    spent_payment_method: Optional[str] = None
+    spent_value: Optional[float] = None
+    spent_general_name: Optional[str] = None
+    description: Optional[str] = None
+    spent_date: Optional[datetime] = None
+
+
+class GastoResponse(BaseModel):
+    spent_id: int
+    tenant_id: int
+    spent_category: Optional[str] = None
+    spent_payment_method: str
+    spent_value: float
+    spent_general_name: Optional[str] = None
+    description: Optional[str] = None
+    spent_date: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class GastoCountResponse(BaseModel):
+    total: int
+
+
+# ─── Proveedores ──────────────────────────────────────────────────────────────
+
+class ProveedorCreate(BaseModel):
+    nombre: str
+    telefono: Optional[str] = None
+    email: Optional[str] = None
+    direccion: Optional[str] = None
+    activo: bool = True
+    loyalty_level: Optional[str] = None
+
+class ProveedorUpdate(BaseModel):
+    nombre: Optional[str] = None
+    telefono: Optional[str] = None
+    email: Optional[str] = None
+    direccion: Optional[str] = None
+    activo: Optional[bool] = None
+    loyalty_level: Optional[str] = None
+
+class ProveedorResponse(BaseModel):
+    prov_id: int
+    prov_name: str
+    prov_contact: str
+    prov_address: Optional[str] = None
+    state: bool
+    loyalty_level: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+# ─── Servicios de Lavandería ──────────────────────────────────────────────────
+
+from pydantic import Field
+
+class ServicioCreate(BaseModel):
+    nombre: str
+    precio: float = Field(gt=0, description="Precio debe ser mayor a 0")
+    descripcion: Optional[str] = None
+    spent_per_service: float = 0.0
+    user_institute: str = "Usuario"
+    nombre_instituto: str = "usuario"
+
+class ServicioUpdate(BaseModel):
+    nombre: Optional[str] = None
+    precio: Optional[float] = Field(default=None, gt=0)
+    descripcion: Optional[str] = None
+    spent_per_service: Optional[float] = None
+
+class LaundryServiceResponse(BaseModel):
+    service_id: int
+    service_name: str
+    service_value: float
+    description: Optional[str] = None
+    spent_per_service: float
+    nombre_instituto: str
+    
+    model_config = {"from_attributes": True}
+
+
+# ─── Usuarios (Clientes de Lavandería) ────────────────────────────────────────
+
+class UsuarioCreate(BaseModel):
+    nombre: str
+    email: Optional[str] = None
+    activo: bool = True
+    direccion: Optional[str] = None
+    loyalty_level: Optional[str] = None
+
+class UsuarioUpdate(BaseModel):
+    nombre: Optional[str] = None
+    email: Optional[str] = None
+    activo: Optional[bool] = None
+    direccion: Optional[str] = None
+    loyalty_level: Optional[str] = None
+
+class UsuarioResponse(BaseModel):
+    user_id: int
+    user_name: str
+    user_contact: str
+    user_address: Optional[str] = None
+    state: bool
+    loyalty_level: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+class UsuarioCountResponse(BaseModel):
+    total: int
+
+
+# ─── Órdenes B2C ─────────────────────────────────────────────────────────────
+
+from datetime import date as _date
+from pydantic import ConfigDict
+from typing import List as _List
+
+class ItemOrdenCreate(BaseModel):
+    id: int                          # service_id
+    name: str
+    qty: int = Field(ge=1)
+    value: float = Field(gt=0)
+    is_agency: bool = False
+
+
+class AbonoInicial(BaseModel):
+    monto: float = Field(gt=0)
+    metodo_pago: str                 # "Efectivo" | "Nequi" | "Transferencia"
+
+
+class OrdenCreate(BaseModel):
+    user_id: int
+    servicios_data: _List[ItemOrdenCreate]
+    items_description: str = ""
+    state_payment: str               # "Pagada" | "Debe"
+    discount_value: float = 0.0
+    pagos: _List[AbonoInicial] = []
+    # Si pagos está vacío → orden queda como Debe sin abono.
+    # Si state_payment == "Pagada" → se registra el total con el método
+    # del primer elemento de pagos o "Efectivo" si pagos está vacío.
+    state_state: str = "En progreso"
+
+
+class ActualizarEstadoRequest(BaseModel):
+    estado: str
+    estado_pago: str
+    metodo_pago: Optional[str] = None
+    monto_pago: float = 0.0
+
+
+class RegistrarPagoRequest(BaseModel):
+    monto: float = Field(gt=0)
+    metodo_pago: str
+
+
+class OrdenResponse(BaseModel):
+    order_id: int
+    user_id: int
+    user_name: str
+    user_contact: str
+    state_payment: str
+    state_state: str
+    order_value: float
+    payment_method: Optional[str] = None
+    restante: float
+    abono: float
+    created_at: datetime
+    days_open: int
+    agency: Optional[str] = None
+    agency_done_date: Optional[_date] = None
+    spent_per_order: float
+    net_income_value: float
+    discount_value: float
+    items_description: Optional[str] = None
+    is_institute: bool
+    consolidated_invoice_id: Optional[int] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DetalleOrdenResponse(BaseModel):
+    name: str
+    qty: float
+    value: float
+    is_agency: bool
+
+
+class ClienteSearchResponse(BaseModel):
+    id: int
+    nombre: str
+
+
+# ─── Facturación B2B ──────────────────────────────────────────────────────────
+
+class OrdenB2BCreate(BaseModel):
+    """Igual que OrdenCreate pero sin is_institute (se fuerza True internamente)."""
+    user_id: int
+    servicios_data: _List[ItemOrdenCreate]
+    items_description: str = ""
+    state_payment: str               # "Pagada" | "Debe"
+    payment_method: str              # "Efectivo" | "Nequi" | "Transferencia"
+    discount_value: float = 0.0
+    abono: float = 0.0
+    state_state: str = "En progreso"
+
+
+class GenerarFacturaRequest(BaseModel):
+    user_id: int
+    order_ids: _List[int]
+    notes: Optional[str] = None
+
+
+class PagoInstitucionalRequest(BaseModel):
+    monto: float = Field(gt=0)
+    metodo_pago: str
+
+
+class AbonoRequest(BaseModel):
+    user_id: int
+    amount: float = Field(gt=0)
+    payment_method: str
+    notes: Optional[str] = None
+
+
+class FacturaConsolidadaResponse(BaseModel):
+    invoice_id: int
+    user_id: int
+    user_name: str
+    total_amount: float
+    pagado: float
+    balance_due: float
+    is_paid: bool
+    notes: Optional[str] = None
+    created_at: datetime
+    ordenes_ids: _List[int]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AbonoResponse(BaseModel):
+    abono_id: int
+    user_id: int
+    amount: float
+    payment_method: str
+    notes: Optional[str] = None
+    created_at: datetime
+    saldo_a_favor_resultante: float
+
+    model_config = ConfigDict(from_attributes=True)
+
+

@@ -1,0 +1,565 @@
+"""
+Servicio de Facturación B2C – lógica async de negocio para órdenes de clientes particulares.
+B2C = clientes físicos (no instituciones). NUNCA crea ConsolidatedInvoice.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta, timezone
+from typing import Optional
+from zoneinfo import ZoneInfo
+
+from sqlalchemy import select, func, or_
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
+
+from app.models import (
+    OrderDetail,
+    OrderHeader,
+    OrderPayment,
+    Service,
+    SpentBusiness,
+    LaundryUser,
+)
+
+
+# ── Zona horaria de Bogotá ─────────────────────────────────────────────────────
+BOGOTA_TZ = ZoneInfo("America/Bogota")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# DTOs  (mantenidos idénticos al servicio Flet original)
+# ──────────────────────────────────────────────────────────────────────────────
+
+@dataclass
+class ServicioDTO:
+    service_id:    int
+    service_name:  str
+    service_value: float
+    spent_per_service: float = 0.0
+
+    @classmethod
+    def from_orm(cls, s) -> "ServicioDTO":
+        return cls(
+            service_id        = s.service_id,
+            service_name      = s.service_name,
+            service_value     = float(s.service_value),
+            spent_per_service = float(s.spent_per_service or 0),
+        )
+
+
+@dataclass
+class OrdenDTO:
+    order_id:          int
+    user_id:           int
+    user_name:         str
+    user_contact:      str
+    state_payment:     str
+    state_state:       str
+    order_value:       float
+    payment_method:    Optional[str]
+    restante:          float
+    abono:             float
+    created_at:        datetime
+    days_open:         int
+    agency:            Optional[str]
+    agency_done_date:  Optional[date]
+    spent_per_order:   float
+    net_income_value:  float
+    discount_value:    float
+    items_description: Optional[str]
+    is_institute:      bool
+    consolidated_invoice_id: Optional[int]
+
+    @classmethod
+    def from_orm(cls, o, user_map: dict[int, str], contact_map: dict[int, str]) -> "OrdenDTO":
+        if o.order_status != "Terminada":
+            _days = (datetime.now(timezone.utc).date() - o.date.date()).days
+            days_open = max(0, _days)
+        else:
+            days_open = 0
+
+        abono_calc = float(o.total_amount) - float(o.balance_due)
+
+        # Último método de pago registrado
+        last_pm = None
+        if o.payments:
+            last_pm = o.payments[-1].payment_method
+
+        # Determinar si hay al menos un detalle de agencia
+        agency_str = None
+        agency_done = None
+        if hasattr(o, "details") and o.details:
+            if any(d.is_agency for d in o.details):
+                agency_str = "Agencia"
+                agency_done = next((d.agency_done_date for d in o.details if d.is_agency), None)
+            else:
+                agency_str = "Local"
+
+        return cls(
+            order_id          = o.id,
+            user_id           = o.user_id,
+            user_name         = user_map.get(o.user_id, o.user_name or f"ID {o.user_id}"),
+            user_contact      = contact_map.get(o.user_id, "—"),
+            state_payment     = "Pagada" if o.is_paid else "Debe",
+            state_state       = o.order_status,
+            order_value       = float(o.total_amount),
+            payment_method    = last_pm,
+            restante          = float(o.balance_due),
+            abono             = float(abono_calc),
+            created_at        = o.date,
+            days_open         = days_open,
+            agency            = agency_str,
+            agency_done_date  = agency_done,
+            spent_per_order   = float(o.spent_per_order or 0),
+            net_income_value  = float(o.net_income_value or o.total_amount),
+            discount_value    = float(o.discount or 0),
+            items_description = o.items_description,
+            is_institute      = bool(getattr(o, "is_institute", False)),
+            consolidated_invoice_id = getattr(o, "consolidated_invoice_id", None),
+        )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Filtros tipados
+# ──────────────────────────────────────────────────────────────────────────────
+
+@dataclass
+class FiltrosOrden:
+    estado_pago:    str = "Todos"
+    estado_orden:   str = "Todos"
+    cliente_nombre: str = ""
+    fecha_inicio:   Optional[date] = None
+    fecha_fin:      Optional[date] = None
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Helpers internos de query
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _aplicar_filtros_ordenes(stmt, tenant_id: int, filtros: FiltrosOrden):
+    """Aplica filtros comunes a un SELECT sobre OrderHeader."""
+    stmt = stmt.where(
+        OrderHeader.tenant_id == tenant_id,
+        OrderHeader.is_institute == False,  # noqa: E712  — B2C nunca es instituto
+    )
+    if filtros.estado_pago and filtros.estado_pago != "Todos":
+        is_paid_val = filtros.estado_pago == "Pagada"
+        stmt = stmt.where(OrderHeader.is_paid == is_paid_val)
+    if filtros.estado_orden and filtros.estado_orden != "Todos":
+        stmt = stmt.where(OrderHeader.order_status == filtros.estado_orden)
+    if filtros.fecha_inicio:
+        stmt = stmt.where(func.date(OrderHeader.date) >= filtros.fecha_inicio.isoformat())
+    if filtros.fecha_fin:
+        stmt = stmt.where(func.date(OrderHeader.date) <= filtros.fecha_fin.isoformat())
+    if filtros.cliente_nombre:
+        stmt = stmt.join(LaundryUser, OrderHeader.user_id == LaundryUser.user_id).where(
+            LaundryUser.user_name.ilike(f"%{filtros.cliente_nombre}%")
+        )
+    return stmt
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Funciones del servicio
+# ──────────────────────────────────────────────────────────────────────────────
+
+async def listar_servicios_disponibles(db: AsyncSession, tenant_id: int) -> list[ServicioDTO]:
+    """Lista servicios B2C del tenant (excluye los exclusivos de institución)."""
+    stmt = (
+        select(Service)
+        .where(
+            Service.tenant_id == tenant_id,
+            Service.user_institute != "Institución",  # excluir B2B-only
+        )
+        .order_by(Service.service_name)
+    )
+    result = await db.execute(stmt)
+    servicios = result.scalars().all()
+    return [ServicioDTO.from_orm(s) for s in servicios]
+
+
+async def buscar_clientes(
+    db: AsyncSession, tenant_id: int, query: str, limit: int = 13
+) -> list[tuple[int, str]]:
+    """Busca clientes B2C del tenant por nombre o contacto."""
+    stmt = (
+        select(LaundryUser)
+        .where(
+            LaundryUser.tenant_id == tenant_id,
+            LaundryUser.user_institute == "Usuario",
+            or_(
+                LaundryUser.user_name.ilike(f"%{query}%"),
+                LaundryUser.user_contact.ilike(f"%{query}%"),
+            ),
+        )
+        .order_by(LaundryUser.user_name.asc())
+        .limit(limit)
+    )
+    result = await db.execute(stmt)
+    usuarios = result.scalars().all()
+    return [(u.user_id, u.user_name) for u in usuarios]
+
+
+async def crear_orden(
+    db: AsyncSession,
+    tenant_id: int,
+    user_id: int,
+    servicios_data: list[dict],   # [{id, name, qty, value, is_agency}, ...]
+    items_description: str,
+    state_payment: str,
+    pagos: list[dict],            # [{"monto": float, "metodo_pago": str}, ...]
+    discount_value: float,
+    state_state: str,
+) -> "OrdenDTO | str":
+    """
+    Crea una nueva orden B2C. Devuelve OrdenDTO o str con mensaje de error.
+    NUNCA crea ConsolidatedInvoice (eso es exclusivo B2B).
+    """
+    try:
+        # Verificar que el usuario pertenece al tenant
+        res_user = await db.execute(
+            select(LaundryUser).where(
+                LaundryUser.user_id == user_id,
+                LaundryUser.tenant_id == tenant_id,
+            )
+        )
+        usuario = res_user.scalars().first()
+        if not usuario:
+            return f"Cliente ID {user_id} no encontrado en este tenant."
+
+        nombre_usuario = usuario.user_name
+
+        # ── PASO 1: calcular spent_per_order por servicios de agencia ──────────
+        total_spent_per_order = 0.0
+        servicios = [dict(s) for s in servicios_data]  # copia mutable
+
+        for s in servicios:
+            if s.get("is_agency"):
+                res_svc = await db.execute(
+                    select(Service).where(
+                        Service.service_id == s.get("id"),
+                        Service.tenant_id == tenant_id,
+                    )
+                )
+                svc_obj = res_svc.scalars().first()
+                if svc_obj:
+                    cost = float(svc_obj.spent_per_service or 0) * s.get("qty", 1)
+                    s["spent_per_service"] = cost
+                    total_spent_per_order += cost
+                else:
+                    s["spent_per_service"] = 0.0
+            else:
+                s["spent_per_service"] = 0.0
+
+        # ── PASO 2: calcular totales ───────────────────────────────────────────
+        subtotal      = sum(s["value"] * s["qty"] for s in servicios)
+        order_value   = round(subtotal - discount_value, 2)
+        net_income    = round(order_value - total_spent_per_order, 2)
+        abono_total   = sum(p["monto"] for p in pagos)
+
+        if state_payment == "Pagada":
+            restante = 0.0
+        else:
+            restante = max(0.0, round(order_value - abono_total, 2))
+
+        # ── PASO 3: crear OrderHeader ──────────────────────────────────────────
+        orden = OrderHeader(
+            tenant_id         = tenant_id,
+            user_id           = user_id,
+            user_name         = nombre_usuario,
+            order_status      = state_state,
+            is_paid           = (state_payment == "Pagada"),
+            subtotal          = subtotal,
+            discount          = discount_value,
+            total_amount      = order_value,
+            balance_due       = restante,
+            items_description = items_description or None,
+            spent_per_order   = total_spent_per_order,
+            net_income_value  = net_income,
+            is_institute      = False,   # B2C siempre False
+        )
+        db.add(orden)
+        await db.flush()  # obtener orden.id
+
+        now_naive = datetime.now()
+
+        # ── PASO 4: crear OrderDetail por cada servicio ────────────────────────
+        for s in servicios:
+            agency_done = (now_naive + timedelta(days=7)).date() if s.get("is_agency") else None
+            detalle = OrderDetail(
+                tenant_id        = tenant_id,
+                order_id         = orden.id,
+                user_id          = user_id,
+                user_name        = nombre_usuario,
+                service_name     = s["name"],
+                quantity         = s["qty"],
+                unit_price       = s["value"],
+                total_item_price = s["value"] * s["qty"],
+                is_agency        = s.get("is_agency", False),
+                agency_done_date = agency_done,
+                spent_per_order  = s["spent_per_service"],
+            )
+            db.add(detalle)
+
+        # ── PASO 5: crear OrderPayment(s) ─────────────────────────────────────
+        if state_payment == "Pagada":
+            # Un solo pago por el total completo
+            metodo = pagos[0]["metodo_pago"] if pagos else "Efectivo"
+            db.add(OrderPayment(
+                tenant_id      = tenant_id,
+                order_id       = orden.id,
+                user_id        = user_id,
+                user_name      = nombre_usuario,
+                payment_method = metodo,
+                amount         = order_value,
+            ))
+        else:
+            # Un OrderPayment por cada abono inicial con monto > 0
+            for p in pagos:
+                if p["monto"] > 0:
+                    db.add(OrderPayment(
+                        tenant_id      = tenant_id,
+                        order_id       = orden.id,
+                        user_id        = user_id,
+                        user_name      = nombre_usuario,
+                        payment_method = p["metodo_pago"],
+                        amount         = p["monto"],
+                    ))
+
+        # ── PASO 6: gasto de agencia automático ───────────────────────────────
+        if total_spent_per_order > 0:
+            gasto_agencia = SpentBusiness(
+                tenant_id            = tenant_id,
+                spent_date           = now_naive,
+                spent_category       = "Agencia",
+                spent_general_name   = f"Orden por agencia: {nombre_usuario}",
+                spent_payment_method = "Nequi",
+                spent_value          = total_spent_per_order,
+            )
+            db.add(gasto_agencia)
+
+        await db.commit()
+        await db.refresh(orden)
+
+        # Construir DTO con los datos del usuario
+        user_map    = {usuario.user_id: usuario.user_name}
+        contact_map = {usuario.user_id: usuario.user_contact or "—"}
+
+        # Recargar con detalles y pagos para from_orm
+        res_orden = await db.execute(
+            select(OrderHeader)
+            .options(joinedload(OrderHeader.details), joinedload(OrderHeader.payments))
+            .where(OrderHeader.id == orden.id)
+        )
+        orden_full = res_orden.unique().scalars().first()
+        return OrdenDTO.from_orm(orden_full, user_map, contact_map)
+
+    except IntegrityError as exc:
+        await db.rollback()
+        return f"Error de integridad al crear la orden: {exc}"
+    except Exception as exc:
+        await db.rollback()
+        return f"Error inesperado: {exc}"
+
+
+async def contar_ordenes(
+    db: AsyncSession, tenant_id: int, filtros: FiltrosOrden
+) -> int:
+    """Cuenta órdenes B2C con filtros aplicados."""
+    stmt = select(func.count(OrderHeader.id))
+    stmt = _aplicar_filtros_ordenes(stmt, tenant_id, filtros)
+    result = await db.execute(stmt)
+    return result.scalar() or 0
+
+
+async def listar_ordenes(
+    db: AsyncSession,
+    tenant_id: int,
+    filtros: FiltrosOrden,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[OrdenDTO]:
+    """Lista órdenes B2C con filtros, paginación y eager load."""
+    stmt = (
+        select(OrderHeader)
+        .options(
+            joinedload(OrderHeader.payments),
+            joinedload(OrderHeader.details),
+        )
+        .order_by(OrderHeader.date.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    stmt = _aplicar_filtros_ordenes(stmt, tenant_id, filtros)
+
+    result = await db.execute(stmt)
+    ordenes = result.unique().scalars().all()
+
+    # Resolver user_map y contact_map DENTRO de la sesión
+    user_ids = {o.user_id for o in ordenes}
+    if user_ids:
+        res_u = await db.execute(
+            select(LaundryUser).where(LaundryUser.user_id.in_(user_ids))
+        )
+        usuarios = res_u.scalars().all()
+        name_map    = {u.user_id: u.user_name          for u in usuarios}
+        contact_map = {u.user_id: u.user_contact or "—" for u in usuarios}
+    else:
+        name_map, contact_map = {}, {}
+
+    return [OrdenDTO.from_orm(o, name_map, contact_map) for o in ordenes]
+
+
+async def registrar_pago(
+    db: AsyncSession,
+    tenant_id: int,
+    order_id: int,
+    monto: float,
+    metodo_pago: str,
+) -> "bool | str":
+    """Registra un abono parcial a una orden B2C existente."""
+    try:
+        res = await db.execute(
+            select(OrderHeader).where(
+                OrderHeader.id == order_id,
+                OrderHeader.tenant_id == tenant_id,
+                OrderHeader.is_institute == False,  # noqa: E712
+            )
+        )
+        orden = res.scalars().first()
+        if not orden:
+            raise ValueError(f"Orden #{order_id} no encontrada en este tenant.")
+
+        pago = OrderPayment(
+            tenant_id      = tenant_id,
+            order_id       = orden.id,
+            user_id        = orden.user_id,
+            user_name      = orden.user_name,
+            payment_method = metodo_pago,
+            amount         = monto,
+        )
+        db.add(pago)
+
+        nueva_deuda = round(orden.balance_due - monto, 2)
+        orden.balance_due = max(0.0, nueva_deuda)
+        if orden.balance_due <= 0:
+            orden.is_paid = True
+
+        await db.commit()
+        return True
+
+    except ValueError as ve:
+        await db.rollback()
+        return str(ve)
+    except Exception as exc:
+        await db.rollback()
+        return f"Error al registrar pago: {exc}"
+
+
+async def actualizar_estado(
+    db: AsyncSession,
+    tenant_id: int,
+    order_id: int,
+    estado: str,
+    estado_pago: str,
+    metodo_pago: Optional[str] = None,
+    monto_pago: float = 0.0,
+) -> "bool | str":
+    """Actualiza el estado de una orden B2C y opcionalmente registra un pago."""
+    try:
+        res = await db.execute(
+            select(OrderHeader).where(
+                OrderHeader.id == order_id,
+                OrderHeader.tenant_id == tenant_id,
+                OrderHeader.is_institute == False,  # noqa: E712
+            )
+        )
+        orden = res.scalars().first()
+        if not orden:
+            return f"Orden #{order_id} no encontrada en este tenant."
+
+        # Registrar pago si hay monto
+        if monto_pago > 0 and metodo_pago:
+            resultado_pago = await registrar_pago(db, tenant_id, order_id, monto_pago, metodo_pago)
+            if isinstance(resultado_pago, str):
+                return resultado_pago
+            # Recargar la orden para obtener balance_due actualizado
+            await db.refresh(orden)
+
+        # Actualizar estado
+        orden.order_status = estado
+
+        # Regla is_paid
+        if orden.balance_due <= 0 or estado == "Terminada" or estado_pago == "Pagada":
+            orden.is_paid = True
+            if estado == "Terminada" or estado_pago == "Pagada":
+                orden.balance_due = 0.0
+        else:
+            orden.is_paid = False
+
+        await db.commit()
+        return True
+
+    except Exception as exc:
+        await db.rollback()
+        return f"Error al actualizar orden: {exc}"
+
+
+async def obtener_detalle_orden(
+    db: AsyncSession, tenant_id: int, order_id: int
+) -> "list[dict] | str":
+    """Devuelve los ítems de detalle de una orden B2C."""
+    # Verificar ownership
+    res = await db.execute(
+        select(OrderHeader).where(
+            OrderHeader.id == order_id,
+            OrderHeader.tenant_id == tenant_id,
+            OrderHeader.is_institute == False,  # noqa: E712
+        )
+    )
+    orden = res.scalars().first()
+    if not orden:
+        return f"Orden #{order_id} no encontrada en este tenant."
+
+    res_det = await db.execute(
+        select(OrderDetail).where(OrderDetail.order_id == order_id)
+    )
+    detalles = res_det.scalars().all()
+
+    return [
+        {
+            "name":      d.service_name,
+            "qty":       d.quantity,
+            "value":     d.unit_price,
+            "is_agency": d.is_agency,
+        }
+        for d in detalles
+    ]
+
+
+async def eliminar_orden(
+    db: AsyncSession, tenant_id: int, order_id: int
+) -> "bool | str":
+    """Elimina una orden B2C. Falla si pertenece a una factura consolidada B2B."""
+    res = await db.execute(
+        select(OrderHeader).where(
+            OrderHeader.id == order_id,
+            OrderHeader.tenant_id == tenant_id,
+        )
+    )
+    orden = res.scalars().first()
+    if not orden:
+        return f"Orden #{order_id} no encontrada."
+
+    if orden.consolidated_invoice_id is not None:
+        # Lanzar HTTPException desde el router; aquí devolvemos string marcador
+        return "consolidada"  # el router detecta esta palabra clave → 409
+
+    try:
+        await db.delete(orden)
+        await db.commit()
+        return True
+    except Exception as exc:
+        await db.rollback()
+        return f"Error al eliminar la orden: {exc}"
