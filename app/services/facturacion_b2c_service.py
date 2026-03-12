@@ -132,6 +132,7 @@ class FiltrosOrden:
     cliente_nombre: str = ""
     fecha_inicio:   Optional[date] = None
     fecha_fin:      Optional[date] = None
+    user_id:        Optional[int] = None
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -140,8 +141,10 @@ class FiltrosOrden:
 
 def _aplicar_filtros_ordenes(stmt, tenant_id: int, filtros: FiltrosOrden):
     """Aplica filtros comunes a un SELECT sobre OrderHeader."""
+    if tenant_id is not None:
+        stmt = stmt.where(OrderHeader.tenant_id == tenant_id)
+        
     stmt = stmt.where(
-        OrderHeader.tenant_id == tenant_id,
         OrderHeader.is_institute == False,  # noqa: E712  — B2C nunca es instituto
     )
     if filtros.estado_pago and filtros.estado_pago != "Todos":
@@ -166,14 +169,13 @@ def _aplicar_filtros_ordenes(stmt, tenant_id: int, filtros: FiltrosOrden):
 
 async def listar_servicios_disponibles(db: AsyncSession, tenant_id: int) -> list[ServicioDTO]:
     """Lista servicios B2C del tenant (excluye los exclusivos de institución)."""
-    stmt = (
-        select(Service)
-        .where(
-            Service.tenant_id == tenant_id,
-            Service.user_institute != "Institución",  # excluir B2B-only
-        )
-        .order_by(Service.service_name)
+    stmt = select(Service).where(
+        Service.user_institute != "Institución",  # excluir B2B-only
     )
+    if tenant_id is not None:
+        stmt = stmt.where(Service.tenant_id == tenant_id)
+    
+    stmt = stmt.order_by(Service.service_name)
     result = await db.execute(stmt)
     servicios = result.scalars().all()
     return [ServicioDTO.from_orm(s) for s in servicios]
@@ -186,16 +188,17 @@ async def buscar_clientes(
     stmt = (
         select(LaundryUser)
         .where(
-            LaundryUser.tenant_id == tenant_id,
             LaundryUser.user_institute == "Usuario",
             or_(
                 LaundryUser.user_name.ilike(f"%{query}%"),
                 LaundryUser.user_contact.ilike(f"%{query}%"),
             ),
         )
-        .order_by(LaundryUser.user_name.asc())
-        .limit(limit)
     )
+    if tenant_id is not None:
+        stmt = stmt.where(LaundryUser.tenant_id == tenant_id)
+    
+    stmt = stmt.order_by(LaundryUser.user_name.asc()).limit(limit)
     result = await db.execute(stmt)
     usuarios = result.scalars().all()
     return [(u.user_id, u.user_name) for u in usuarios]
@@ -217,13 +220,11 @@ async def crear_orden(
     NUNCA crea ConsolidatedInvoice (eso es exclusivo B2B).
     """
     try:
-        # Verificar que el usuario pertenece al tenant
-        res_user = await db.execute(
-            select(LaundryUser).where(
-                LaundryUser.user_id == user_id,
-                LaundryUser.tenant_id == tenant_id,
-            )
-        )
+        stmt_u = select(LaundryUser).where(LaundryUser.user_id == user_id)
+        if tenant_id is not None:
+            stmt_u = stmt_u.where(LaundryUser.tenant_id == tenant_id)
+        
+        res_user = await db.execute(stmt_u)
         usuario = res_user.scalars().first()
         if not usuario:
             return f"Cliente ID {user_id} no encontrado en este tenant."
@@ -236,12 +237,11 @@ async def crear_orden(
 
         for s in servicios:
             if s.get("is_agency"):
-                res_svc = await db.execute(
-                    select(Service).where(
-                        Service.service_id == s.get("id"),
-                        Service.tenant_id == tenant_id,
-                    )
-                )
+                stmt_svc = select(Service).where(Service.service_id == s.get("id"))
+                if tenant_id is not None:
+                    stmt_svc = stmt_svc.where(Service.tenant_id == tenant_id)
+                
+                res_svc = await db.execute(stmt_svc)
                 svc_obj = res_svc.scalars().first()
                 if svc_obj:
                     cost = float(svc_obj.spent_per_service or 0) * s.get("qty", 1)
@@ -420,13 +420,14 @@ async def registrar_pago(
 ) -> "bool | str":
     """Registra un abono parcial a una orden B2C existente."""
     try:
-        res = await db.execute(
-            select(OrderHeader).where(
-                OrderHeader.id == order_id,
-                OrderHeader.tenant_id == tenant_id,
-                OrderHeader.is_institute == False,  # noqa: E712
-            )
+        stmt_o = select(OrderHeader).where(
+            OrderHeader.id == order_id,
+            OrderHeader.is_institute == False,  # noqa: E712
         )
+        if tenant_id is not None:
+            stmt_o = stmt_o.where(OrderHeader.tenant_id == tenant_id)
+            
+        res = await db.execute(stmt_o)
         orden = res.scalars().first()
         if not orden:
             raise ValueError(f"Orden #{order_id} no encontrada en este tenant.")
@@ -468,13 +469,14 @@ async def actualizar_estado(
 ) -> "bool | str":
     """Actualiza el estado de una orden B2C y opcionalmente registra un pago."""
     try:
-        res = await db.execute(
-            select(OrderHeader).where(
-                OrderHeader.id == order_id,
-                OrderHeader.tenant_id == tenant_id,
-                OrderHeader.is_institute == False,  # noqa: E712
-            )
+        stmt_uo = select(OrderHeader).where(
+            OrderHeader.id == order_id,
+            OrderHeader.is_institute == False,  # noqa: E712
         )
+        if tenant_id is not None:
+            stmt_uo = stmt_uo.where(OrderHeader.tenant_id == tenant_id)
+        
+        res = await db.execute(stmt_uo)
         orden = res.scalars().first()
         if not orden:
             return f"Orden #{order_id} no encontrada en este tenant."
@@ -510,14 +512,14 @@ async def obtener_detalle_orden(
     db: AsyncSession, tenant_id: int, order_id: int
 ) -> "list[dict] | str":
     """Devuelve los ítems de detalle de una orden B2C."""
-    # Verificar ownership
-    res = await db.execute(
-        select(OrderHeader).where(
-            OrderHeader.id == order_id,
-            OrderHeader.tenant_id == tenant_id,
-            OrderHeader.is_institute == False,  # noqa: E712
-        )
+    stmt_do = select(OrderHeader).where(
+        OrderHeader.id == order_id,
+        OrderHeader.is_institute == False,  # noqa: E712
     )
+    if tenant_id is not None:
+        stmt_do = stmt_do.where(OrderHeader.tenant_id == tenant_id)
+        
+    res = await db.execute(stmt_do)
     orden = res.scalars().first()
     if not orden:
         return f"Orden #{order_id} no encontrada en este tenant."
@@ -542,12 +544,11 @@ async def eliminar_orden(
     db: AsyncSession, tenant_id: int, order_id: int
 ) -> "bool | str":
     """Elimina una orden B2C. Falla si pertenece a una factura consolidada B2B."""
-    res = await db.execute(
-        select(OrderHeader).where(
-            OrderHeader.id == order_id,
-            OrderHeader.tenant_id == tenant_id,
-        )
-    )
+    stmt_eo = select(OrderHeader).where(OrderHeader.id == order_id)
+    if tenant_id is not None:
+        stmt_eo = stmt_eo.where(OrderHeader.tenant_id == tenant_id)
+        
+    res = await db.execute(stmt_eo)
     orden = res.scalars().first()
     if not orden:
         return f"Orden #{order_id} no encontrada."

@@ -1,18 +1,21 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_user, require_admin_or_above
-from app.models import AppUser
-from app.schemas import UsuarioCreate, UsuarioUpdate, UsuarioResponse, UsuarioCountResponse
+from app.models import AppUser, OrderHeader
+from app.schemas import UsuarioCreate, UsuarioUpdate, UsuarioResponse, UsuarioCountResponse, OrderHistorialItem
 from app.services import usuario_service
+from app.services.historial_service import _derivar_estado_pago
 
 router = APIRouter()
 
 # 1. GET /usuarios/count
 @router.get("/count", response_model=UsuarioCountResponse)
 async def contar_usuarios(
+    user_type: Optional[str] = Query(default=None),
     search_names: List[str] = Query(default=[]),
     search_contacts: List[str] = Query(default=[]),
     db: AsyncSession = Depends(get_db),
@@ -21,6 +24,7 @@ async def contar_usuarios(
     total = await usuario_service.contar(
         db=db,
         tenant_id=current_user.tenant_id,
+        user_type=user_type,
         search_names=search_names,
         search_contacts=search_contacts
     )
@@ -29,6 +33,7 @@ async def contar_usuarios(
 # 2. GET /usuarios/
 @router.get("/", response_model=List[UsuarioResponse])
 async def listar_usuarios(
+    user_type: Optional[str] = Query(default=None),
     search_names: List[str] = Query(default=[]),
     search_contacts: List[str] = Query(default=[]),
     limit: int = Query(default=25, ge=1, le=100),
@@ -39,6 +44,7 @@ async def listar_usuarios(
     return await usuario_service.listar(
         db=db,
         tenant_id=current_user.tenant_id,
+        user_type=user_type,
         search_names=search_names,
         search_contacts=search_contacts,
         limit=limit,
@@ -63,6 +69,45 @@ async def buscar_usuario_por_nombre(
         query=q,
         limit=limit
     )
+
+# 4a. GET /usuarios/{usuario_id}/ordenes — últimas órdenes del cliente
+@router.get("/{usuario_id}/ordenes", response_model=List[OrderHistorialItem])
+async def obtener_ordenes_usuario(
+    usuario_id: int,
+    limit: int = Query(default=5, ge=1, le=20),
+    db: AsyncSession = Depends(get_db),
+    current_user: AppUser = Depends(get_current_user),
+):
+    stmt = (
+        select(OrderHeader)
+        .where(OrderHeader.user_id == usuario_id)
+        .order_by(OrderHeader.date.desc())
+        .limit(limit)
+    )
+    if current_user.tenant_id is not None:
+        stmt = stmt.where(OrderHeader.tenant_id == current_user.tenant_id)
+    result = await db.execute(stmt)
+    ordenes = result.scalars().all()
+    return [
+        OrderHistorialItem(
+            id=o.id,
+            date=o.date,
+            order_status=o.order_status,
+            estado_pago=_derivar_estado_pago(o.order_status, o.is_paid, o.balance_due, o.total_amount),
+            is_paid=o.is_paid,
+            subtotal=o.subtotal,
+            discount=o.discount,
+            total_amount=o.total_amount,
+            balance_due=o.balance_due,
+            items_description=o.items_description,
+            is_institute=o.is_institute,
+            consolidated_invoice_id=o.consolidated_invoice_id,
+            user_id=o.user_id,
+            user_name=o.user_name or "",
+        )
+        for o in ordenes
+    ]
+
 
 # 4. GET /usuarios/{usuario_id}
 @router.get("/{usuario_id}", response_model=UsuarioResponse)

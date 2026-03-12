@@ -1,5 +1,5 @@
-from typing import List, Optional
-from sqlalchemy import select
+from typing import List, Optional, Union
+from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 
@@ -12,13 +12,19 @@ PROTECTED_SERVICES = ["Lavado + Secado", "Servicio X Libras", "Jabon", "Suavizan
 async def listar(
     db: AsyncSession, 
     tenant_id: int, 
-    filtro_institucion: Optional[str] = None
+    user_institute: Optional[str] = None,
+    search: Optional[str] = None
 ) -> List[Service]:
-    """Lista servicios de un tenant con filtro opcional por institución."""
-    query = select(Service).where(Service.tenant_id == tenant_id)
+    """Lista servicios de un tenant con filtros opcionales."""
+    query = select(Service)
+    if tenant_id is not None:
+        query = query.where(Service.tenant_id == tenant_id)
     
-    if filtro_institucion:
-        query = query.where(Service.user_institute == filtro_institucion)
+    if user_institute:
+        query = query.where(Service.user_institute == user_institute)
+    
+    if search:
+        query = query.where(Service.service_name.ilike(f"%{search}%"))
         
     result = await db.execute(query.order_by(Service.service_name))
     return result.scalars().all()
@@ -27,32 +33,27 @@ async def listar(
 async def crear(
     db: AsyncSession, 
     tenant_id: int, 
-    datos: ServicioCreate, 
-    user_institute: str, 
-    nombre_instituto: str
+    datos: ServicioCreate
 ):
     """Crea un nuevo servicio asociado a un tenant."""
     try:
-        # Verificar si ya existe el servicio en este tenant (el modelo ya tiene UniqueConstraint)
-        # Pero podemos revisarlo antes explícitamente si queremos, o dejar que falle en IntegrityError
-        # El user requería: "Si crear_servicio devuelve None → el servicio ya existe → devolver str con error"
-        existe = await db.execute(
-            select(Service).where(
-                Service.tenant_id == tenant_id,
-                Service.service_name == datos.nombre
-            )
+        # Verificar si ya existe
+        stmt = select(Service).where(
+            Service.tenant_id == tenant_id,
+            Service.service_name == datos.service_name
         )
+        existe = await db.execute(stmt)
         if existe.scalars().first():
             return "El servicio ya existe."
 
         nuevo_servicio = Service(
             tenant_id=tenant_id,
-            service_name=datos.nombre,
-            service_value=datos.precio,
-            description=datos.descripcion,
+            service_name=datos.service_name,
+            service_value=datos.service_value,
+            description=datos.description,
             spent_per_service=datos.spent_per_service,
-            user_institute=user_institute,
-            nombre_instituto=nombre_instituto,
+            user_institute=datos.user_institute,
+            nombre_instituto=datos.nombre_instituto,
         )
         db.add(nuevo_servicio)
         await db.commit()
@@ -69,17 +70,17 @@ async def crear(
 
 
 async def borrar(db: AsyncSession, tenant_id: int, servicio_id: int) -> Optional[str]:
-    """Elimina un servicio si pertenece al tenant y no está protegido ni tiene transacciones pasadas."""
-    result = await db.execute(
-        select(Service)
-        .where(Service.tenant_id == tenant_id, Service.service_id == servicio_id)
-    )
+    """Elimina un servicio si pertenece al tenant y no está protegido."""
+    stmt = select(Service).where(Service.service_id == servicio_id)
+    if tenant_id is not None:
+        stmt = stmt.where(Service.tenant_id == tenant_id)
+    
+    result = await db.execute(stmt)
     servicio = result.scalars().first()
     
     if not servicio:
         return "Not found"
         
-    # El chequeo de servicios protegidos debe ocurrir ANTES de borrar
     if servicio.service_name in PROTECTED_SERVICES:
         return "Este es un servicio fundamental y no puede ser eliminado."
         
@@ -97,30 +98,27 @@ async def actualizar(
     tenant_id: int,
     servicio_id: int,
     datos: ServicioUpdate,
-) -> Service | str:
+) -> Union[Service, str]:
     """Actualiza un servicio del tenant. Devuelve Service o str con error."""
-    result = await db.execute(
-        select(Service).where(
-            Service.tenant_id == tenant_id,
-            Service.service_id == servicio_id,
-        )
-    )
+    stmt = select(Service).where(Service.service_id == servicio_id)
+    if tenant_id is not None:
+        stmt = stmt.where(Service.tenant_id == tenant_id)
+    
+    result = await db.execute(stmt)
     servicio = result.scalars().first()
 
     if not servicio:
         return "Not found"
 
-    if datos.nombre is not None and servicio.service_name in PROTECTED_SERVICES:
+    # Validar cambio de nombre en servicios protegidos
+    if (datos.service_name is not None and 
+        datos.service_name != servicio.service_name and 
+        servicio.service_name in PROTECTED_SERVICES):
         return f"El servicio '{servicio.service_name}' es fundamental y no se puede renombrar."
 
-    if datos.nombre is not None:
-        servicio.service_name = datos.nombre.title()
-    if datos.precio is not None:
-        servicio.service_value = datos.precio
-    if datos.descripcion is not None:
-        servicio.description = datos.descripcion
-    if datos.spent_per_service is not None:
-        servicio.spent_per_service = datos.spent_per_service
+    update_data = datos.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(servicio, key, value)
 
     try:
         await db.commit()
@@ -132,3 +130,48 @@ async def actualizar(
     except Exception as exc:
         await db.rollback()
         return f"Error al actualizar: {exc}"
+
+
+async def obtener_stats(db: AsyncSession, tenant_id: int) -> dict:
+    """Calcula estadísticas de servicios para el tenant."""
+    # B2C Stats
+    stmt_b2c = select(
+        func.count(Service.service_id).label("count"),
+        func.avg(Service.service_value).label("avg_price")
+    ).where(Service.user_institute == "usuario")
+    
+    if tenant_id is not None:
+        stmt_b2c = stmt_b2c.where(Service.tenant_id == tenant_id)
+    
+    res_b2c = await db.execute(stmt_b2c)
+    row_b2c = res_b2c.one()
+    
+    # B2B Stats
+    stmt_b2b = select(
+        func.count(Service.service_id).label("count"),
+        func.avg(Service.service_value).label("avg_price")
+    ).where(Service.user_institute == "instituto")
+    
+    if tenant_id is not None:
+        stmt_b2b = stmt_b2b.where(Service.tenant_id == tenant_id)
+    
+    res_b2b = await db.execute(stmt_b2b)
+    row_b2b = res_b2b.one()
+    
+    # Servant más rentable (service_value - spent_per_service)
+    stmt_rentable = select(Service.service_name)
+    if tenant_id is not None:
+        stmt_rentable = stmt_rentable.where(Service.tenant_id == tenant_id)
+    
+    stmt_rentable = stmt_rentable.order_by((Service.service_value - Service.spent_per_service).desc()).limit(1)
+    
+    res_rentable = await db.execute(stmt_rentable)
+    rentable_name = res_rentable.scalar_one_or_none()
+    
+    return {
+        "total_b2c": row_b2c.count,
+        "total_b2b": row_b2b.count,
+        "precio_promedio_b2c": float(row_b2c.avg_price or 0.0),
+        "precio_promedio_b2b": float(row_b2b.avg_price or 0.0),
+        "servicio_mas_rentable": rentable_name
+    }

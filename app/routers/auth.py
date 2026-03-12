@@ -1,3 +1,4 @@
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +21,9 @@ async def login(datos: LoginRequest, db: AsyncSession = Depends(get_db)):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciales inválidas o cuenta/tenant inactivo",
         )
+
+    user.last_login = datetime.utcnow()
+    await db.commit()
 
     token = auth_service.crear_token_jwt({
         "user_id": user.id,

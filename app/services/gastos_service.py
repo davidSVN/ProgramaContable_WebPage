@@ -113,9 +113,9 @@ async def contar(
     """Cuenta gastos del tenant aplicando filtros."""
     if filtros is None:
         filtros = FiltrosGasto()
-    query = select(func.count(SpentBusiness.spent_id)).where(
-        SpentBusiness.tenant_id == tenant_id
-    )
+    query = select(func.count(SpentBusiness.spent_id))
+    if tenant_id is not None:
+        query = query.where(SpentBusiness.tenant_id == tenant_id)
     query = _aplicar_filtros(query, filtros)
     result = await db.execute(query)
     return result.scalar()
@@ -131,7 +131,9 @@ async def listar(
     """Lista gastos del tenant aplicando filtros y paginación."""
     if filtros is None:
         filtros = FiltrosGasto()
-    query = select(SpentBusiness).where(SpentBusiness.tenant_id == tenant_id)
+    query = select(SpentBusiness)
+    if tenant_id is not None:
+        query = query.where(SpentBusiness.tenant_id == tenant_id)
     query = _aplicar_filtros(query, filtros)
     stmt = query.order_by(SpentBusiness.spent_date.desc()).offset(offset).limit(limit)
     result = await db.execute(stmt)
@@ -149,12 +151,11 @@ async def actualizar(
 ) -> bool | str:
     """Actualiza un gasto. Devuelve True o str con error."""
     try:
-        result = await db.execute(
-            select(SpentBusiness).where(
-                SpentBusiness.tenant_id == tenant_id,
-                SpentBusiness.spent_id == gasto_id,
-            )
-        )
+        stmt = select(SpentBusiness).where(SpentBusiness.spent_id == gasto_id)
+        if tenant_id is not None:
+            stmt = stmt.where(SpentBusiness.tenant_id == tenant_id)
+        
+        result = await db.execute(stmt)
         gasto = result.scalars().first()
         if not gasto:
             return f"Gasto #{gasto_id} no encontrado."
@@ -182,12 +183,11 @@ async def borrar(
 ) -> bool | str:
     """Elimina un gasto. Devuelve True o str con error."""
     try:
-        result = await db.execute(
-            select(SpentBusiness).where(
-                SpentBusiness.tenant_id == tenant_id,
-                SpentBusiness.spent_id == gasto_id,
-            )
-        )
+        stmt = select(SpentBusiness).where(SpentBusiness.spent_id == gasto_id)
+        if tenant_id is not None:
+            stmt = stmt.where(SpentBusiness.tenant_id == tenant_id)
+            
+        result = await db.execute(stmt)
         gasto = result.scalars().first()
         if not gasto:
             return f"Gasto #{gasto_id} no encontrado."

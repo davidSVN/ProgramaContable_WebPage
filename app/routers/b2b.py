@@ -78,6 +78,7 @@ async def contar_ordenes_b2b(
     cliente_nombre: Optional[str]  = Query(default=""),
     fecha_inicio:   Optional[date] = Query(default=None),
     fecha_fin:      Optional[date] = Query(default=None),
+    user_id:        Optional[int]  = Query(default=None),
     db:             AsyncSession   = Depends(get_db),
     current_user = Depends(require_admin_or_above),
 ):
@@ -87,6 +88,7 @@ async def contar_ordenes_b2b(
         cliente_nombre = cliente_nombre or "",
         fecha_inicio   = fecha_inicio,
         fecha_fin      = fecha_fin,
+        user_id        = user_id,
     )
     total = await svc.contar_ordenes_b2b(db, current_user.tenant_id, filtros)
     return {"total": total}
@@ -99,6 +101,7 @@ async def listar_ordenes_b2b(
     cliente_nombre: Optional[str]  = Query(default=""),
     fecha_inicio:   Optional[date] = Query(default=None),
     fecha_fin:      Optional[date] = Query(default=None),
+    user_id:        Optional[int]  = Query(default=None),
     limit:          int            = Query(default=50, le=200),
     offset:         int            = Query(default=0, ge=0),
     db:             AsyncSession   = Depends(get_db),
@@ -110,6 +113,7 @@ async def listar_ordenes_b2b(
         cliente_nombre = cliente_nombre or "",
         fecha_inicio   = fecha_inicio,
         fecha_fin      = fecha_fin,
+        user_id        = user_id,
     )
     dtos = await svc.listar_ordenes_b2b(db, current_user.tenant_id, filtros, limit, offset)
     return [_orden_dto_to_response(d) for d in dtos]

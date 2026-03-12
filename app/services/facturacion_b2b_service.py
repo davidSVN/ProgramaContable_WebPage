@@ -123,13 +123,11 @@ async def crear_orden_b2b(
     Si state_payment == 'Pagada', genera una ConsolidatedInvoice automática
     y vincula la orden a ella.
     """
-    # Verificar que el usuario pertenece al tenant y es institución
-    res_user = await db.execute(
-        select(LaundryUser).where(
-            LaundryUser.user_id == user_id,
-            LaundryUser.tenant_id == tenant_id,
-        )
-    )
+    stmt_u = select(LaundryUser).where(LaundryUser.user_id == user_id)
+    if tenant_id is not None:
+        stmt_u = stmt_u.where(LaundryUser.tenant_id == tenant_id)
+        
+    res_user = await db.execute(stmt_u)
     usuario = res_user.scalars().first()
     if not usuario:
         return f"Institución ID {user_id} no encontrada en este tenant."
@@ -155,12 +153,11 @@ async def crear_orden_b2b(
 
         for s in servicios:
             if s.get("is_agency"):
-                res_svc = await db.execute(
-                    select(Service).where(
-                        Service.service_id == s.get("id"),
-                        Service.tenant_id == tenant_id,
-                    )
-                )
+                stmt_svc = select(Service).where(Service.service_id == s.get("id"))
+                if tenant_id is not None:
+                    stmt_svc = stmt_svc.where(Service.tenant_id == tenant_id)
+                
+                res_svc = await db.execute(stmt_svc)
                 svc_obj = res_svc.scalars().first()
                 if svc_obj:
                     cost = float(svc_obj.spent_per_service or 0) * s.get("qty", 1)
@@ -300,8 +297,10 @@ async def listar_ordenes_b2b(
         .offset(offset)
     )
     # Aplicar filtros base B2B (tenant + is_institute=True)
+    if tenant_id is not None:
+        stmt = stmt.where(OrderHeader.tenant_id == tenant_id)
+        
     stmt = stmt.where(
-        OrderHeader.tenant_id == tenant_id,
         OrderHeader.is_institute == True,  # noqa: E712
     )
     if filtros.estado_pago and filtros.estado_pago != "Todos":
@@ -317,6 +316,8 @@ async def listar_ordenes_b2b(
         stmt = stmt.join(LaundryUser, OrderHeader.user_id == LaundryUser.user_id).where(
             LaundryUser.user_name.ilike(f"%{filtros.cliente_nombre}%")
         )
+    if filtros.user_id:
+        stmt = stmt.where(OrderHeader.user_id == filtros.user_id)
 
     result = await db.execute(stmt)
     ordenes = result.unique().scalars().all()
@@ -342,9 +343,10 @@ async def contar_ordenes_b2b(
 ) -> int:
     """Cuenta órdenes B2B con filtros aplicados."""
     stmt = select(func.count(OrderHeader.id)).where(
-        OrderHeader.tenant_id == tenant_id,
         OrderHeader.is_institute == True,  # noqa: E712
     )
+    if tenant_id is not None:
+        stmt = stmt.where(OrderHeader.tenant_id == tenant_id)
     if filtros.estado_pago and filtros.estado_pago != "Todos":
         stmt = stmt.where(OrderHeader.is_paid == (filtros.estado_pago == "Pagada"))
     if filtros.estado_orden and filtros.estado_orden != "Todos":
@@ -357,6 +359,8 @@ async def contar_ordenes_b2b(
         stmt = stmt.join(LaundryUser, OrderHeader.user_id == LaundryUser.user_id).where(
             LaundryUser.user_name.ilike(f"%{filtros.cliente_nombre}%")
         )
+    if filtros.user_id:
+        stmt = stmt.where(OrderHeader.user_id == filtros.user_id)
     result = await db.execute(stmt)
     return result.scalar() or 0
 
@@ -373,26 +377,25 @@ async def generar_factura_consolidada(
     Solo agrupa órdenes: is_institute=True, is_paid=False, consolidated_invoice_id IS NULL.
     """
     # Verificar que el usuario pertenece al tenant
-    res_user = await db.execute(
-        select(LaundryUser).where(
-            LaundryUser.user_id == user_id,
-            LaundryUser.tenant_id == tenant_id,
-        )
-    )
+    stmt_u = select(LaundryUser).where(LaundryUser.user_id == user_id)
+    if tenant_id is not None:
+        stmt_u = stmt_u.where(LaundryUser.tenant_id == tenant_id)
+        
+    res_user = await db.execute(stmt_u)
     if not res_user.scalars().first():
         return f"Institución ID {user_id} no encontrada en este tenant."
 
-    # Buscar órdenes válidas
-    res_ord = await db.execute(
-        select(OrderHeader).where(
-            OrderHeader.tenant_id == tenant_id,
-            OrderHeader.user_id == user_id,
-            OrderHeader.id.in_(order_ids),
-            OrderHeader.is_paid == False,               # noqa: E712
-            OrderHeader.consolidated_invoice_id == None, # noqa: E711
-            OrderHeader.is_institute == True,           # noqa: E712
-        )
+    stmt_ord = select(OrderHeader).where(
+        OrderHeader.user_id == user_id,
+        OrderHeader.id.in_(order_ids),
+        OrderHeader.is_paid == False,               # noqa: E712
+        OrderHeader.consolidated_invoice_id == None, # noqa: E711
+        OrderHeader.is_institute == True,           # noqa: E712
     )
+    if tenant_id is not None:
+        stmt_ord = stmt_ord.where(OrderHeader.tenant_id == tenant_id)
+        
+    res_ord = await db.execute(stmt_ord)
     ordenes = res_ord.scalars().all()
 
     if not ordenes:
@@ -434,9 +437,10 @@ async def listar_facturas_consolidadas(
             joinedload(ConsolidatedInvoice.orders),
             joinedload(ConsolidatedInvoice.user),
         )
-        .where(ConsolidatedInvoice.tenant_id == tenant_id)
         .order_by(ConsolidatedInvoice.created_at.desc())
     )
+    if tenant_id is not None:
+        stmt = stmt.where(ConsolidatedInvoice.tenant_id == tenant_id)
     if user_id is not None:
         stmt = stmt.where(ConsolidatedInvoice.user_id == user_id)
     if solo_pendientes:
@@ -480,13 +484,13 @@ async def registrar_pago_institucional(
              Si excede la deuda → excedente va a saldo_a_favor.
     """
     try:
-        # Verificar que la factura pertenece al tenant
-        res_fac = await db.execute(
-            select(ConsolidatedInvoice).where(
-                ConsolidatedInvoice.id == consolidated_id,
-                ConsolidatedInvoice.tenant_id == tenant_id,
-            )
+        stmt_fac = select(ConsolidatedInvoice).where(
+            ConsolidatedInvoice.id == consolidated_id,
         )
+        if tenant_id is not None:
+            stmt_fac = stmt_fac.where(ConsolidatedInvoice.tenant_id == tenant_id)
+            
+        res_fac = await db.execute(stmt_fac)
         factura = res_fac.scalars().first()
         if not factura:
             return f"Factura consolidada #{consolidated_id} no encontrada en este tenant."
@@ -595,13 +599,11 @@ async def registrar_abono_institucional(
          las auto-agrupa en una nueva ConsolidatedInvoice.
     """
     try:
-        # Verificar que el usuario pertenece al tenant
-        res_user = await db.execute(
-            select(LaundryUser).where(
-                LaundryUser.user_id == user_id,
-                LaundryUser.tenant_id == tenant_id,
-            )
-        )
+        stmt_u = select(LaundryUser).where(LaundryUser.user_id == user_id)
+        if tenant_id is not None:
+            stmt_u = stmt_u.where(LaundryUser.tenant_id == tenant_id)
+            
+        res_user = await db.execute(stmt_u)
         usuario = res_user.scalars().first()
         if not usuario:
             return f"Institución ID {user_id} no encontrada en este tenant."
@@ -618,15 +620,18 @@ async def registrar_abono_institucional(
         db.add(abono)
 
         # ── PASO 2: Amortizar Facturas Consolidadas pendientes (FIFO) ─────────
-        res_fac = await db.execute(
+        stmt_fac = (
             select(ConsolidatedInvoice)
             .where(
-                ConsolidatedInvoice.tenant_id == tenant_id,
                 ConsolidatedInvoice.user_id == user_id,
                 ConsolidatedInvoice.is_paid == False,  # noqa: E712
             )
             .order_by(ConsolidatedInvoice.created_at.asc())
         )
+        if tenant_id is not None:
+            stmt_fac = stmt_fac.where(ConsolidatedInvoice.tenant_id == tenant_id)
+            
+        res_fac = await db.execute(stmt_fac)
         facturas_pendientes = res_fac.scalars().all()
 
         for fac in facturas_pendientes:
@@ -674,10 +679,9 @@ async def registrar_abono_institucional(
 
         # ── PASO 3: Amortizar Órdenes B2B individuales no consolidadas (FIFO) ─
         if float(usuario.saldo_a_favor) > 0.01:
-            res_ord = await db.execute(
+            stmt_ord = (
                 select(OrderHeader)
                 .where(
-                    OrderHeader.tenant_id == tenant_id,
                     OrderHeader.user_id == user_id,
                     OrderHeader.is_institute == True,            # noqa: E712
                     OrderHeader.is_paid == False,                # noqa: E712
@@ -686,6 +690,10 @@ async def registrar_abono_institucional(
                 )
                 .order_by(OrderHeader.date.asc())
             )
+            if tenant_id is not None:
+                stmt_ord = stmt_ord.where(OrderHeader.tenant_id == tenant_id)
+                
+            res_ord = await db.execute(stmt_ord)
             ordenes_pendientes = res_ord.scalars().all()
 
             ordenes_afectadas = []

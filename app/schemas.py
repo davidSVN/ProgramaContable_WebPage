@@ -146,18 +146,20 @@ class ProveedorResponse(BaseModel):
 from pydantic import Field
 
 class ServicioCreate(BaseModel):
-    nombre: str
-    precio: float = Field(gt=0, description="Precio debe ser mayor a 0")
-    descripcion: Optional[str] = None
+    service_name: str
+    service_value: float = Field(gt=0, description="Precio debe ser mayor a 0")
+    description: Optional[str] = None
     spent_per_service: float = 0.0
-    user_institute: str = "Usuario"
-    nombre_instituto: str = "usuario"
+    user_institute: str = "usuario"  # 'usuario' or 'instituto'
+    nombre_instituto: Optional[str] = None
 
 class ServicioUpdate(BaseModel):
-    nombre: Optional[str] = None
-    precio: Optional[float] = Field(default=None, gt=0)
-    descripcion: Optional[str] = None
+    service_name: Optional[str] = None
+    service_value: Optional[float] = Field(default=None, gt=0)
+    description: Optional[str] = None
     spent_per_service: Optional[float] = None
+    user_institute: Optional[str] = None
+    nombre_instituto: Optional[str] = None
 
 class LaundryServiceResponse(BaseModel):
     service_id: int
@@ -165,9 +167,17 @@ class LaundryServiceResponse(BaseModel):
     service_value: float
     description: Optional[str] = None
     spent_per_service: float
-    nombre_instituto: str
+    user_institute: str
+    nombre_instituto: Optional[str] = None
     
     model_config = {"from_attributes": True}
+
+class ServicioStatsResponse(BaseModel):
+    total_b2c: int
+    total_b2b: int
+    precio_promedio_b2c: float
+    precio_promedio_b2b: float
+    servicio_mas_rentable: Optional[str] = None
 
 
 # ─── Usuarios (Clientes de Lavandería) ────────────────────────────────────────
@@ -175,24 +185,42 @@ class LaundryServiceResponse(BaseModel):
 class UsuarioCreate(BaseModel):
     nombre: str
     email: Optional[str] = None
-    activo: bool = True
+    contacto: str
+    nit: Optional[str] = None
     direccion: Optional[str] = None
+    user_type: str = "B2C"
+    payment_condition: str = "Contado"
+    activo: bool = True
     loyalty_level: Optional[str] = None
 
 class UsuarioUpdate(BaseModel):
     nombre: Optional[str] = None
     email: Optional[str] = None
-    activo: Optional[bool] = None
+    contacto: Optional[str] = None
+    nit: Optional[str] = None
     direccion: Optional[str] = None
+    user_type: Optional[str] = None
+    payment_condition: Optional[str] = None
+    activo: Optional[bool] = None
     loyalty_level: Optional[str] = None
 
 class UsuarioResponse(BaseModel):
     user_id: int
     user_name: str
     user_contact: str
+    email: Optional[str] = None
+    nit: Optional[str] = None
     user_address: Optional[str] = None
     state: bool
     loyalty_level: Optional[str] = None
+    user_type: str
+    payment_condition: str
+    
+    # Métricas calculadas
+    total_orders: int = 0
+    total_spent: float = 0.0
+    last_visit: Optional[datetime] = None
+    pending_invoices: int = 0
 
     model_config = {"from_attributes": True}
 
@@ -338,5 +366,81 @@ class AbonoResponse(BaseModel):
     saldo_a_favor_resultante: float
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ─── Historial de Órdenes ──────────────────────────────────────────────────
+
+class OrderHistorialItem(BaseModel):
+    id: int
+    date: datetime
+    order_status: str
+    estado_pago: str  # Campo derivado
+    is_paid: bool
+    subtotal: float
+    discount: float
+    total_amount: float
+    balance_due: float
+    items_description: Optional[str] = None
+    is_institute: bool
+    consolidated_invoice_id: Optional[int] = None
+    user_id: int
+    user_name: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OrderHistorialResponse(BaseModel):
+    data: _List[OrderHistorialItem]
+    total: int
+    page: int
+    limit: int
+    total_pages: int
+
+
+class OrderStatsResponse(BaseModel):
+    total_ordenes: int
+    total_recaudado: float
+    ordenes_debe: int
+    monto_por_cobrar: float
+
+
+# ─── App Users Management ─────────────────────────────────────────────────────
+
+class AppUserCreate(BaseModel):
+    username: str
+    email: EmailStr
+    password: str
+    role: str  # "admin" | "empleado"
+    cedula: Optional[str] = None
+
+class AppUserUpdate(BaseModel):
+    username: Optional[str] = None
+    email: Optional[EmailStr] = None
+    cedula: Optional[str] = None
+    role: Optional[str] = None
+    is_active: Optional[bool] = None
+    password: Optional[str] = None  # Added to allow password updates
+
+class AppUserResponse(BaseModel):
+    id: int
+    username: str
+    email: str
+    role: str
+    cedula: Optional[str] = None
+    is_active: bool
+    created_at: datetime
+    last_login: Optional[datetime] = None
+    tenant_id: Optional[int] = None
+
+    model_config = {"from_attributes": True}
+
+class AppUsersStatsResponse(BaseModel):
+    total_usuarios: int
+    total_admins: int
+    total_empleados: int
+    activos: int
+    inactivos: int
+    max_usuarios: int        # from tenant.max_usuarios
+    slots_disponibles: int   # max_usuarios - total_usuarios
 
 

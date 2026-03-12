@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.dependencies import get_current_user, require_admin_or_above
 from app.models import AppUser
-from app.schemas import ServicioCreate, ServicioUpdate, LaundryServiceResponse
+from app.schemas import ServicioCreate, ServicioUpdate, LaundryServiceResponse, ServicioStatsResponse
 from app.services import servicios_service
 
 router = APIRouter()
@@ -13,7 +13,8 @@ router = APIRouter()
 
 @router.get("/", response_model=List[LaundryServiceResponse])
 async def listar_servicios(
-    filtro_institucion: Optional[str] = Query(default=None),
+    user_institute: Optional[str] = Query(default=None),
+    search: Optional[str] = Query(default=None),
     current_user: AppUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -21,9 +22,20 @@ async def listar_servicios(
     servicios = await servicios_service.listar(
         db, 
         current_user.tenant_id, 
-        filtro_institucion=filtro_institucion
+        user_institute=user_institute,
+        search=search
     )
     return servicios
+
+
+@router.get("/stats", response_model=ServicioStatsResponse)
+async def obtener_stats_servicios(
+    current_user: AppUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Retorna estadísticas de servicios para el tenant."""
+    stats = await servicios_service.obtener_stats(db, current_user.tenant_id)
+    return stats
 
 
 @router.post("/", response_model=LaundryServiceResponse, status_code=status.HTTP_201_CREATED)
@@ -32,22 +44,18 @@ async def crear_servicio(
     current_user: AppUser = Depends(require_admin_or_above),
     db: AsyncSession = Depends(get_db)
 ):
-    """Crea un nuevo servicio (solo admin). Los datos de la institución se sacan del usuario."""
-    # En el modelo original, no existía 'user_institute' en AppUser, pero el user_request dice:
-    # "extraer de current_user.institute o similar según tu modelo de User"
-    # Como no hay campos así en AppUser (solo role, tenant, username, email), 
-    # usaré un fallback por defecto basado en los detalles del requirement original.
-    
-    # Intenta obtener de un posible profile, o usar valores por defecto si el AppUser no lo tiene.
-    ui = datos.user_institute
-    ni = datos.nombre_instituto
-    
+    """Crea un nuevo servicio (solo admin)."""
+    # Validación manual de nombre_instituto si es instituto
+    if datos.user_institute == "instituto" and not datos.nombre_instituto:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="nombre_instituto es requerido cuando user_institute es 'instituto'"
+        )
+
     resultado = await servicios_service.crear(
         db, 
         current_user.tenant_id, 
-        datos,
-        user_institute=ui,
-        nombre_instituto=ni
+        datos
     )
     
     if isinstance(resultado, str):
@@ -78,10 +86,11 @@ async def actualizar_servicio(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Servicio no encontrado o no pertenece al tenant",
         )
-    if isinstance(resultado, str) and "fundamental" in resultado:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=resultado)
     if isinstance(resultado, str):
+        if "fundamental" in resultado:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=resultado)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=resultado)
+    
     return LaundryServiceResponse.model_validate(resultado)
 
 
@@ -106,4 +115,4 @@ async def borrar_servicio(
     elif error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
         
-    return {"message": "Servicio eliminado correctamente"}
+    return {"deleted": True, "service_id": servicio_id}

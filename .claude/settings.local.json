@@ -4,7 +4,8 @@
       "Bash(node --version && npm --version)",
       "Bash(npm create:*)",
       "Bash(cd /c/Users/david.vasquez/Documents/personal/lavanderia/lavalatu-api/frontend && npm install react-router-dom 2>&1 | tail -5)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(find /c/Users/david.vasquez/Documents/personal/lavanderia/lavalatu-api/frontend/src -type f -name \"*.jsx\" -o -name \"*.css\" 2>/dev/null | head -20)"
     ]
   }
 }

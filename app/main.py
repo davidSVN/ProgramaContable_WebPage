@@ -26,12 +26,15 @@ app = FastAPI(
 
 # ─── CORS ─────────────────────────────────────────────────────────────────────
 
-allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000")
-allowed_origins = [origin.strip() for origin in allowed_origins_str.split(",")]
+from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://localhost:4173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -39,7 +42,7 @@ app.add_middleware(
 
 # ─── Routers ──────────────────────────────────────────────────────────────────
 
-from app.routers import auth, superadmin, gastos, proveedores, servicios, usuarios, ordenes, b2b
+from app.routers import auth, superadmin, gastos, proveedores, servicios, usuarios, ordenes, b2b, app_users
 
 app.include_router(auth.router, prefix="/api")
 app.include_router(superadmin.router, prefix="/api")
@@ -49,6 +52,7 @@ app.include_router(servicios.router, prefix="/api/servicios", tags=["Servicios"]
 app.include_router(usuarios.router, prefix="/api/usuarios", tags=["Usuarios"])
 app.include_router(ordenes.router, prefix="/api/ordenes", tags=["Órdenes B2C"])
 app.include_router(b2b.router, prefix="/api/b2b", tags=["Facturación B2B"])
+app.include_router(app_users.router, prefix="/api")
 
 
 # ─── Health Check ─────────────────────────────────────────────────────────────

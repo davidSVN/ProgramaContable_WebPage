@@ -29,6 +29,8 @@ class AppUser(Base):
     username = Column(String(100), nullable=False)
     password_hash = Column(String(255), nullable=False)
     role = Column(String(20), nullable=False)  # "superadmin" | "admin" | "empleado"
+    cedula = Column(String(20), nullable=True)
+    last_login = Column(DateTime, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -56,12 +58,16 @@ class LaundryUser(Base):
     user_id = Column(Integer, primary_key=True, index=True)
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
     user_name = Column(String(100), nullable=False)
-    user_contact = Column(String(13), nullable=False)
+    user_contact = Column(String(50), nullable=False)  # Mantenemos como teléfono/contacto principal
+    email = Column(String(150), nullable=True)
+    nit = Column(String(50), nullable=True)  # Para instituciones B2B
     user_address = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     state = Column(Boolean, default=True, nullable=False)
     loyalty_level = Column(String(50))
     user_institute = Column(String(100), default="Usuario")
+    user_type = Column(String(20), default="B2C")  # "B2C" | "B2B"
+    payment_condition = Column(String(50), default="Contado")  # "Contado" | "Al crédito"
     saldo_a_favor = Column(Float, default=0.0, nullable=False)
     tenant = relationship("Tenant")
     orders = relationship("OrderHeader", back_populates="buyer")

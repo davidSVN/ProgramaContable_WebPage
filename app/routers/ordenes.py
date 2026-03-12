@@ -19,11 +19,58 @@ from app.schemas import (
     OrdenCreate,
     OrdenResponse,
     RegistrarPagoRequest,
+    OrderHistorialResponse,
+    OrderStatsResponse,
 )
 from app.services import facturacion_b2c_service as service
+from app.services import historial_service
 from app.services.facturacion_b2c_service import FiltrosOrden
 
 router = APIRouter()
+
+
+# ── Historial y Estadísticas ──────────────────────────────────────────────────
+
+@router.get("/historial", response_model=OrderHistorialResponse)
+async def obtener_historial_ordenes(
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=15, ge=1, le=100),
+    estado_pago: Optional[str] = Query(default=None),
+    estado_orden: Optional[str] = Query(default=None),
+    cliente: Optional[str] = Query(default=None),
+    desde: Optional[date] = Query(default=None),
+    hasta: Optional[date] = Query(default=None),
+    is_institute: Optional[bool] = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    current_user: AppUser = Depends(get_current_user),
+):
+    """
+    Obtiene el historial de órdenes del tenant con filtros y paginación.
+    Incluye tanto B2C como B2B (instituciones) si se filtra por is_institute.
+    """
+    return await historial_service.obtener_historial(
+        db=db,
+        tenant_id=current_user.tenant_id,
+        page=page,
+        limit=limit,
+        estado_pago=estado_pago,
+        estado_orden=estado_orden,
+        cliente=cliente,
+        desde=desde,
+        hasta=hasta,
+        is_institute=is_institute
+    )
+
+
+@router.get("/historial/stats", response_model=OrderStatsResponse)
+async def obtener_stats(
+    db: AsyncSession = Depends(get_db),
+    current_user: AppUser = Depends(get_current_user),
+):
+    """
+    Obtiene estadísticas resumidas de órdenes para el tenant actual.
+    """
+    return await historial_service.obtener_stats_historial(db, current_user.tenant_id)
 
 
 # ── 1. GET /ordenes/servicios ─────────────────────────────────────────────────
