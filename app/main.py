@@ -41,17 +41,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://[::1]:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:4173",
-        "http://127.0.0.1:4173",
-    ],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -79,8 +69,11 @@ app.include_router(app_users.router, prefix="/api")
 app.include_router(settings.router, prefix="/api/settings", tags=["Settings"], dependencies=_sub)
 
 
-# ─── Health Check ─────────────────────────────────────────────────────────────
+# ─── Static Files / Frontend ──────────────────────────────────────────────────
 
-@app.get("/")
-async def root():
-    return {"status": "ok", "version": "0.1.0"}
+from fastapi.staticfiles import StaticFiles
+
+# Montamos la carpeta dist del frontend. 
+# Importante: Esto debe ir al final para no interferir con las rutas de la API.
+if os.path.exists("frontend/dist"):
+    app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="static")
