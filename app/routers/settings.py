@@ -7,7 +7,7 @@ from sqlalchemy import select
 from app.database import get_db
 from app.dependencies import get_current_user, require_admin_or_above
 from app.models import AppUser, AppSettings
-from app.schemas import AbreviacionesResponse, AbreviacionesUpdate, AbreviacionesSaveResponse
+from app.schemas import AbreviacionesResponse, AbreviacionesUpdate, AbreviacionesSaveResponse, BusinessSettingsResponse, BusinessSettingsUpdate
 
 router = APIRouter()
 
@@ -106,3 +106,64 @@ async def update_abreviaciones(
         "abreviaciones": abreviaciones,
         "total": len(abreviaciones)
     }
+
+@router.get("/business", response_model=BusinessSettingsResponse)
+async def get_business_settings(
+    db: AsyncSession = Depends(get_db),
+    current_user: AppUser = Depends(get_current_user)
+):
+    """Obtiene la información comercial del negocio."""
+    keys = ["business_name", "business_address", "business_phone", "business_logo"]
+    stmt = select(AppSettings).where(
+        AppSettings.tenant_id == current_user.tenant_id,
+        AppSettings.key.in_(keys)
+    )
+    result = await db.execute(stmt)
+    settings = result.scalars().all()
+    
+    mapping = {s.key: s.value for s in settings}
+    
+    return {
+        "business_name": mapping.get("business_name", "LAVALATU"),
+        "business_address": mapping.get("business_address", "Dirección no configurada"),
+        "business_phone": mapping.get("business_phone", "0000000000"),
+        "business_logo": mapping.get("business_logo")
+    }
+
+@router.put("/business", response_model=BusinessSettingsResponse)
+async def update_business_settings(
+    body: BusinessSettingsUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: AppUser = Depends(require_admin_or_above)
+):
+    """Actualiza la información comercial del negocio."""
+    data = body.model_dump(exclude_unset=True)
+    
+    for key, value in data.items():
+        if value is None: continue
+        
+        stmt = select(AppSettings).where(
+            AppSettings.tenant_id == current_user.tenant_id,
+            AppSettings.key == key
+        )
+        result = await db.execute(stmt)
+        setting = result.scalars().first()
+        
+        if setting:
+            setting.value = value
+        else:
+            setting = AppSettings(
+                tenant_id=current_user.tenant_id,
+                key=key,
+                value=value
+            )
+            db.add(setting)
+            
+    try:
+        await db.commit()
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+        
+    # Return updated state
+    return await get_business_settings(db, current_user)

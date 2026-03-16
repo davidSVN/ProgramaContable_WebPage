@@ -186,7 +186,7 @@ async def contar_gastos(
     return {"total": total}
 
 
-@router.get("/", response_model=List[GastoResponse])
+@router.get("", response_model=List[GastoResponse])
 async def listar_gastos(
     categoria: Optional[str] = Query(default=None, description="Filtrar por categoría"),
     forma_pago: Optional[str] = Query(default=None, description="Filtrar por forma de pago"),
@@ -204,7 +204,7 @@ async def listar_gastos(
     return [_dto_to_response(dto, current_user.tenant_id) for dto in dtos]
 
 
-@router.post("/", response_model=GastoResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=GastoResponse, status_code=status.HTTP_201_CREATED)
 async def registrar_gasto(
     datos: GastoCreate,
     current_user: AppUser = Depends(get_current_user),

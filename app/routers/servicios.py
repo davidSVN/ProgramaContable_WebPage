@@ -11,7 +11,7 @@ from app.services import servicios_service
 router = APIRouter()
 
 
-@router.get("/", response_model=List[LaundryServiceResponse])
+@router.get("", response_model=List[LaundryServiceResponse])
 async def listar_servicios(
     user_institute: Optional[str] = Query(default=None),
     search: Optional[str] = Query(default=None),
@@ -38,7 +38,7 @@ async def obtener_stats_servicios(
     return stats
 
 
-@router.post("/", response_model=LaundryServiceResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=LaundryServiceResponse, status_code=status.HTTP_201_CREATED)
 async def crear_servicio(
     datos: ServicioCreate,
     current_user: AppUser = Depends(require_admin_or_above),

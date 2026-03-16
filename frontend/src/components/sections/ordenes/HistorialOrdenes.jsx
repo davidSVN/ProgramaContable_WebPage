@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { getHistorialOrdenes, getOrdenesStats, deleteOrden, updateOrdenEstado, entregarOrden } from '../../../services/ordenes';
+import PrintInvoice from '../../ui/PrintInvoice';
 import './HistorialOrdenes.css';
 
 // ── Formatters ────────────────────────────────────────────────────────────────
@@ -200,6 +201,7 @@ export default function HistorialOrdenes({ user, onNavigate }) {
   const [editForm, setEditForm]     = useState({});
   const [editSaving, setEditSaving] = useState(false);
   const [toast, setToast]           = useState(null);
+  // const [printData, setPrintData]   = useState(null);
 
   // ── Delivery modal state ───────────────────────────────────────────────────
   const [isEntregarOpen, setIsEntregarOpen]               = useState(false);
@@ -614,6 +616,43 @@ export default function HistorialOrdenes({ user, onNavigate }) {
     }
   };
 
+  /* Comentado temporalmente: Función de reimpresión
+  const handleReprint = async (order) => {
+    try {
+      showToast(`Preparando impresión #${order.id}...`, 'info');
+      // Necesitamos los detalles de la orden (items) para imprimir
+      const { getOrdenDetalle } = await import('../../../services/ordenes');
+      const detalles = await getOrdenDetalle(order.id);
+      
+      const pData = {
+        order_id: order.id,
+        user_name: order.user_name,
+        user_id: order.user_id,
+        date: order.date,
+        items: detalles.map(d => ({
+          name: d.name,
+          qty: d.qty,
+          value: d.value,
+          description: d.description,
+          is_agency: d.is_agency
+        })),
+        total_amount: order.total_amount,
+        balance_due: order.balance_due,
+        discount: order.discount,
+        state_payment: order.estado_pago
+      };
+
+      setPrintData(pData);
+      setTimeout(() => {
+        window.print();
+        setPrintData(null);
+      }, 500);
+    } catch (err) {
+      showToast('Error al obtener detalles para impresión', 'error');
+    }
+  };
+  */
+
   // ── Toast ────────────────────────────────────────────────────────────────────
   const showToast = (msg, type = 'info') => {
     setToast({ msg, type });
@@ -848,11 +887,13 @@ export default function HistorialOrdenes({ user, onNavigate }) {
                 >
                   <td className="ho-td ho-td--actions" onClick={e => e.stopPropagation()}>
                     <div className="ho-actions">
+                      {/* Comentado temporalmente
                       <button
                         className="ho-action-btn"
                         title="Imprimir"
-                        onClick={e => { e.stopPropagation(); window.print(); }}
+                        onClick={e => { e.stopPropagation(); handleReprint(o); }}
                       >🖨️</button>
+                      */}
                       <button
                         className="ho-action-btn"
                         title="Editar estado"
@@ -1032,9 +1073,11 @@ export default function HistorialOrdenes({ user, onNavigate }) {
             )}
 
             <div className="ho-drawer-footer">
-              <button className="ho-btn ho-btn--outline" onClick={() => window.print()}>
+              {/* Comentado temporalmente
+              <button className="ho-btn ho-btn--outline" onClick={() => handleReprint(drawerOrder)}>
                 🖨️ Imprimir orden
               </button>
+              */}
               <button className="ho-btn ho-btn--primary" onClick={() => openEdit(drawerOrder)}>
                 ✏️ Editar orden
               </button>
@@ -1486,6 +1529,14 @@ export default function HistorialOrdenes({ user, onNavigate }) {
           {toast.type === 'success' ? '✅' : '❌'} {toast.msg}
         </div>
       )}
+
+      {/* ── Invisibe Print Component (Comentado) ──
+      {printData && (
+        <div style={{ display: 'none' }}>
+           <PrintInvoice orderData={printData} />
+        </div>
+      )}
+      */}
     </div>
   );
 }

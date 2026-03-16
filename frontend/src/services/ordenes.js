@@ -43,3 +43,8 @@ export const updateOrdenEstado = (id, data) => api.put(`/ordenes/${id}/estado`, 
  * POST /ordenes/:id/entregar
  */
 export const entregarOrden = (id, data) => api.post(`/ordenes/${id}/entregar`, data);
+
+/**
+ * GET /ordenes/:id/detalle
+ */
+export const getOrdenDetalle = (id) => api.get(`/ordenes/${id}/detalle`);

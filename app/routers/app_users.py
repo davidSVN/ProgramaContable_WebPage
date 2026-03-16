@@ -18,7 +18,7 @@ from app.services import auth_service
 router = APIRouter(prefix="/app-users", tags=["App Users"])
 
 
-@router.get("/", response_model=List[AppUserResponse])
+@router.get("", response_model=List[AppUserResponse])
 async def list_app_users(
     role: Optional[str] = Query(None),
     is_active: Optional[bool] = Query(None),
@@ -98,7 +98,7 @@ async def get_app_users_stats(
     )
 
 
-@router.post("/", response_model=AppUserResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=AppUserResponse, status_code=status.HTTP_201_CREATED)
 async def create_app_user(
     datos: AppUserCreate,
     db: AsyncSession = Depends(get_db),
