@@ -1,4 +1,5 @@
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+import { api } from './api';
+
 const TOKEN_KEY = 'washflow_token';
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
@@ -10,45 +11,38 @@ export const clearToken = () => {
 };
 
 export async function login(email, password) {
-  const res = await fetch(`${API}/api/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || 'Credenciales incorrectas');
+  try {
+    const data = await api.post('/auth/login', { email, password });
+    
+    setToken(data.access_token);
+    localStorage.setItem('washflow_plan', data.plan ?? 'none');
+    localStorage.setItem('washflow_role', data.role ?? '');
+    return data;
+  } catch (err) {
+    throw new Error(err.message || 'Credenciales incorrectas');
   }
-  const data = await res.json();
-  setToken(data.access_token);
-  localStorage.setItem('washflow_plan', data.plan ?? 'none');
-  localStorage.setItem('washflow_role', data.role ?? '');
-  return data;
 }
 
 export async function register(name, email, password) {
-  const res = await fetch(`${API}/api/auth/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, email, password }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || 'Error al crear cuenta');
+  try {
+    const data = await api.post('/auth/register', { name, email, password });
+    
+    setToken(data.access_token);
+    localStorage.setItem('washflow_plan', data.plan ?? 'none');
+    localStorage.setItem('washflow_role', data.role ?? '');
+    return data;
+  } catch (err) {
+    throw new Error(err.message || 'Error al crear cuenta');
   }
-  const data = await res.json();
-  setToken(data.access_token);
-  localStorage.setItem('washflow_plan', data.plan ?? 'none');
-  localStorage.setItem('washflow_role', data.role ?? '');
-  return data;
 }
 
 export async function getMe() {
   const token = getToken();
   if (!token) throw new Error('No token');
-  const res = await fetch(`${API}/api/auth/me`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) throw new Error('Token inválido');
-  return res.json();
+  
+  try {
+    return await api.get('/auth/me');
+  } catch (err) {
+    throw new Error('Token inválido');
+  }
 }
