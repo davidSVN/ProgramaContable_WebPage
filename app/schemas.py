@@ -589,3 +589,18 @@ class SuscripcionInfo(BaseModel):
     puede_usar_app: bool    # False if plan == "none"
     es_premium: bool        # True only if plan == "premium"
     features: Dict[str, bool]
+
+
+# ─── Business Settings ────────────────────────────────────────────────────────
+
+class BusinessSettingsUpdate(BaseModel):
+    business_name: Optional[str] = None
+    business_address: Optional[str] = None
+    business_phone: Optional[str] = None
+    business_logo: Optional[str] = None
+
+class BusinessSettingsResponse(BaseModel):
+    business_name: str
+    business_address: str
+    business_phone: str
+    business_logo: Optional[str] = None

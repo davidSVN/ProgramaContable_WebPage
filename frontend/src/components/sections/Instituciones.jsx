@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import './Instituciones.css';
-import { getInstituciones, createInstitucion, getInstitucionOrdenes, getInstitucionFacturas } from '../../services/instituciones';
+import { getInstituciones, createInstitucion, updateInstitucion, getInstitucionOrdenes, getInstitucionFacturas } from '../../services/instituciones';
 import { BlockedAction } from '../ui/BlockedAction';
 
 /* ── Helpers ───────────────────────────────────────────── */
@@ -80,6 +80,7 @@ export default function Instituciones() {
   const [filters, setFilters] = useState({ search: '', estado: '', pago: '' });
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editInst, setEditInst] = useState(null);
   const [drawerInst, setDrawerInst] = useState(null);
   const [drawerClosing, setDrawerClosing] = useState(false);
   const [toasts, setToasts] = useState([]);
@@ -111,6 +112,14 @@ export default function Instituciones() {
   const handleInstCreated = (newInst) => {
     setInstitutions(prev => [mapBackendInst(newInst), ...prev]);
     setIsModalOpen(false);
+    showToast('Institución creada exitosamente', '✅');
+  };
+
+  const handleInstUpdated = (updatedInst) => {
+    const mapped = mapBackendInst(updatedInst);
+    setInstitutions(prev => prev.map(i => i.id === mapped.id ? mapped : i));
+    setEditInst(null);
+    showToast('Institución actualizada exitosamente', '✅');
   };
 
   const handleSearchChange = (val) => {
@@ -164,6 +173,7 @@ export default function Instituciones() {
     const h = (e) => {
       if (e.key === 'Escape') {
         if (isModalOpen) setIsModalOpen(false);
+        else if (editInst) setEditInst(null);
         else if (drawerInst) closeDrawer();
       }
     };
@@ -184,10 +194,7 @@ export default function Instituciones() {
   };
 
   const handleCreated = (data) => {
-    const inst = { ...data, id: Math.max(...institutions.map(i=>i.id))+1, ordenes:0, revenueTotal:0, ordenesMes:0, facturasPendientes:0 };
-    setInstitutions(p => [inst, ...p]);
-    setIsModalOpen(false);
-    showToast('Institución creada exitosamente', '✅');
+    // Note: handleInstCreated is already using the backend result
   };
 
   const handleInactivate = (inst) => {
@@ -299,18 +306,26 @@ export default function Instituciones() {
               inst={inst}
               delay={idx * 50}
               onOpen={() => openDrawer(inst)}
-              onEdit={(e) => { e.stopPropagation(); openDrawer(inst); }}
+              onEdit={(e) => { e.stopPropagation(); setEditInst(inst); }}
               onDelete={(e) => handleDelete(e, inst)}
             />
           ))
         )}
       </div>
 
-      {/* Modal */}
+      {/* Modals */}
       {isModalOpen && (
-        <NewInstModal
+        <InstModal
           onClose={() => setIsModalOpen(false)}
           onSave={handleInstCreated}
+        />
+      )}
+
+      {editInst && (
+        <InstModal
+          initialData={editInst}
+          onClose={() => setEditInst(null)}
+          onSave={handleInstUpdated}
         />
       )}
 
@@ -320,6 +335,7 @@ export default function Instituciones() {
           inst={institutions.find(i => i.id === drawerInst.id) || drawerInst}
           closing={drawerClosing}
           onClose={closeDrawer}
+          onEdit={() => { closeDrawer(); setEditInst(drawerInst); }}
           onInactivate={() => handleInactivate(institutions.find(i => i.id === drawerInst.id) || drawerInst)}
         />
       )}
@@ -405,12 +421,19 @@ function InstitutionCard({ inst, delay, onOpen, onEdit, onDelete }) {
   );
 }
 
-/* ── NewInstModal ──────────────────────────────────────── */
-function NewInstModal({ onClose, onSave }) {
+/* ── InstModal (Create / Edit) ─────────────────────────── */
+function InstModal({ onClose, onSave, initialData = null }) {
+  const isEdit = !!initialData;
   const [form, setForm] = useState({
-    nombre: '', nit: '', contacto: '', direccion: '',
-    fechaInicio: new Date().toISOString().split('T')[0],
-    condicionPago: 'Contado', estado: true,
+    nombre: initialData?.nombre || '',
+    nit: initialData?.nit || '',
+    contacto: initialData?.contacto || '',
+    direccion: initialData?.direccion || '',
+    fechaInicio: initialData?.fechaInicio 
+      ? new Date(initialData.fechaInicio).toISOString().split('T')[0] 
+      : new Date().toISOString().split('T')[0],
+    condicionPago: initialData?.condicionPago || 'Contado',
+    estado: isEdit ? (initialData.estado === 'Activo') : true,
   });
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
@@ -419,7 +442,6 @@ function NewInstModal({ onClose, onSave }) {
 
   useEffect(() => { firstRef.current?.focus(); }, []);
 
-  // NIT format validation: XXX.XXX.XXX-X
   const nitValid = /^\d{3}\.\d{3}\.\d{3}-\d$/.test(form.nit);
 
   const validate = () => {
@@ -441,7 +463,21 @@ function NewInstModal({ onClose, onSave }) {
     }
     setSaving(true);
     try {
-      const result = await createInstitucion(form);
+      let result;
+      if (isEdit) {
+        result = await updateInstitucion(initialData.id, {
+          nombre: form.nombre,
+          nit: form.nit,
+          contacto: form.contacto,
+          direccion: form.direccion,
+          loyalty_level: form.condicionPago, // O donde se guarde en backend
+          activo: form.estado,
+          payment_condition: form.condicionPago,
+          user_type: 'B2B'
+        });
+      } else {
+        result = await createInstitucion(form);
+      }
       onSave(result);
     } catch (err) {
       setErrors({ submit: err.message });
@@ -458,13 +494,14 @@ function NewInstModal({ onClose, onSave }) {
     <div className="i-modal-overlay" onClick={e => e.target === e.currentTarget && onClose()} role="dialog" aria-modal="true" aria-labelledby="i-modal-title">
       <div className={`i-modal ${shake ? 'shake' : ''}`}>
         <div className="i-modal__header">
-          <h2 className="i-modal__title" id="i-modal-title">Nueva Institución</h2>
+          <h2 className="i-modal__title" id="i-modal-title">
+            {isEdit ? `Editar ${initialData.nombre}` : 'Nueva Institución'}
+          </h2>
           <button className="i-close-btn" onClick={onClose} aria-label="Cerrar"><XIcon /></button>
         </div>
 
         <form onSubmit={handleSubmit} noValidate>
           <div className="i-modal__body">
-            {/* Nombre */}
             <div className="i-field">
               <label className="i-field-label" htmlFor="i-nombre">Nombre de la institución <span>*</span></label>
               <input id="i-nombre" ref={firstRef} className={`i-input ${errors.nombre ? 'error' : ''}`}
@@ -474,7 +511,6 @@ function NewInstModal({ onClose, onSave }) {
               {errors.submit && <span className="i-error-msg">⚠ {errors.submit}</span>}
             </div>
 
-            {/* NIT */}
             <div className="i-field">
               <label className="i-field-label" htmlFor="i-nit">NIT / RUT <span>*</span></label>
               <div className="i-input-wrap">
@@ -492,7 +528,6 @@ function NewInstModal({ onClose, onSave }) {
               }
             </div>
 
-            {/* Contacto + Dirección row */}
             <div className="i-field-row">
               <div className="i-field">
                 <label className="i-field-label" htmlFor="i-contacto">Contacto principal <span>*</span></label>
@@ -510,7 +545,6 @@ function NewInstModal({ onClose, onSave }) {
               </div>
             </div>
 
-            {/* Fecha inicio + condicion pago row */}
             <div className="i-field-row">
               <div className="i-field">
                 <label className="i-field-label" htmlFor="i-fecha">Inicio de contrato</label>
@@ -529,11 +563,10 @@ function NewInstModal({ onClose, onSave }) {
               </div>
             </div>
 
-            {/* Estado toggle */}
             <div className="i-toggle-row">
               <div>
-                <div className="i-toggle-label-text">Estado inicial</div>
-                <div className="i-toggle-sub">{form.estado ? 'Institución activa desde el inicio' : 'La institución iniciará inactiva'}</div>
+                <div className="i-toggle-label-text">Estado</div>
+                <div className="i-toggle-sub">{form.estado ? 'Institución activa' : 'Institución inactiva'}</div>
               </div>
               <label className="i-toggle-switch">
                 <input type="checkbox" checked={form.estado} onChange={e => setF('estado', e.target.checked)} aria-label="Estado activo" />
@@ -547,7 +580,7 @@ function NewInstModal({ onClose, onSave }) {
             <button type="button" className="i-btn i-btn-outline" onClick={onClose}>Cancelar</button>
             <BlockedAction>
             <button type="submit" className="i-btn i-btn-primary" disabled={saving}>
-              {saving ? <><div className="i-spinner" /> Guardando...</> : 'Guardar Institución'}
+              {saving ? <><div className="i-spinner" /> Guardando...</> : isEdit ? 'Guardar Cambios' : 'Guardar Institución'}
             </button>
             </BlockedAction>
           </div>
@@ -558,7 +591,7 @@ function NewInstModal({ onClose, onSave }) {
 }
 
 /* ── InstDrawer ────────────────────────────────────────── */
-function InstDrawer({ inst, closing, onClose, onInactivate }) {
+function InstDrawer({ inst, closing, onClose, onEdit, onInactivate }) {
   const [facturas, setFacturas] = useState([]);
   const [ordenes, setOrdenes] = useState([]);
   const [loadingExtras, setLoadingExtras] = useState(true);
@@ -605,7 +638,7 @@ function InstDrawer({ inst, closing, onClose, onInactivate }) {
             </div>
           </div>
           <div className="i-drawer__edit-btn">
-            <button className="i-btn i-btn-outline i-btn-sm" aria-label="Editar institución">
+            <button className="i-btn i-btn-outline i-btn-sm" aria-label="Editar institución" onClick={onEdit}>
               <PencilIcon /> Editar
             </button>
           </div>

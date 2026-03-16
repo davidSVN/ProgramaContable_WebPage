@@ -10,6 +10,7 @@ import {
   crearOrdenB2B,
 } from '../../services/nuevaOrden';
 import { api } from '../../services/api';
+import PrintInvoice from '../ui/PrintInvoice';
 
 /* ── Constants ──────────────────────────────────────────────── */
 const PAYMENT_METHODS = ['Efectivo', 'Nequi', 'Daviplata', 'Transferencia', 'Llave', 'Saldo a Favor'];
@@ -852,8 +853,9 @@ export default function NuevaOrden() {
   const [isCreating, setIsCreating]       = useState(false);
   const [successFlash, setSuccessFlash]   = useState(false);
   const [showConfetti, setShowConfetti]   = useState(false);
-  const [toasts, setToasts]               = useState([]);
-
+  const [toasts, setToasts] = useState([]);
+  // const [printData, setPrintData] = useState(null);
+  const tableTopRef = useRef(null);
   const searchTimer     = useRef(null);
   const toastTimers     = useRef({});
   const searchRef       = useRef(null);
@@ -1169,6 +1171,37 @@ export default function NuevaOrden() {
         'success',
         '',
       );
+      // Print
+      const newPrintData = {
+        order_id: orderNum.toString(),
+        client_name: selectedClient.user_name,
+        client_phone: selectedClient.user_contact,
+        client_email: selectedClient.email,
+        date: new Date().toLocaleString('es-CO'),
+        items: items.map(i => ({
+          qty: i.quantity,
+          name: i.service_name,
+          unit_price: i.unit_price,
+          total: i.quantity * i.unit_price,
+          description: i.description
+        })),
+        subtotal: subtotal,
+        discount: discountAmt,
+        abono: totalAbono,
+        total: total,
+        user_id: 'Admin', // Placeholder or get from auth context if available
+        payment_status: paymentStatus,
+        payment_method: paymentStatus === 'Pagada' ? singleMethod : 'Varios/Pendiente'
+      };
+
+      setPrintData(newPrintData);
+      
+      // Delay to ensure component renders before printing
+      setTimeout(() => {
+        window.print();
+        setPrintData(null);
+      }, 500);
+
       setSuccessFlash(true);
       setShowConfetti(true);
       setTimeout(() => {
@@ -1374,6 +1407,14 @@ export default function NuevaOrden() {
         onAdd={addItem}
         onAddExtra={addExtraService}
       />
+
+      {/* ── Printing Component (Comentado) ──
+      {printData && (
+        <div style={{ display: 'none' }}>
+          <PrintInvoice orderData={printData} />
+        </div>
+      )}
+      */}
     </div>
   );
 }

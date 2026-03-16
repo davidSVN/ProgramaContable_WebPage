@@ -552,7 +552,6 @@ async def obtener_detalle_orden(
     """Devuelve los ítems de detalle de una orden B2C."""
     stmt_do = select(OrderHeader).where(
         OrderHeader.id == order_id,
-        OrderHeader.is_institute == False,  # noqa: E712
     )
     if tenant_id is not None:
         stmt_do = stmt_do.where(OrderHeader.tenant_id == tenant_id)
@@ -573,6 +572,7 @@ async def obtener_detalle_orden(
             "qty":       d.quantity,
             "value":     d.unit_price,
             "is_agency": d.is_agency,
+            "description": d.description,
         }
         for d in detalles
     ]

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import './Usuarios.css';
-import { getUsuarios, createUsuario, getUsuarioOrdenes } from '../../services/usuarios';
+import { getUsuarios, createUsuario, updateUsuario, getUsuarioOrdenes } from '../../services/usuarios';
 import { BlockedAction } from '../ui/BlockedAction';
 
 /* ── Helpers ───────────────────────────────────────────── */
@@ -106,6 +106,7 @@ function Usuarios() {
   const [pageSize, setPageSize] = useState(15);
   const [selected, setSelected] = useState(new Set());
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editUser, setEditUser] = useState(null);
   const [drawerUser, setDrawerUser] = useState(null);
   const [drawerClosing, setDrawerClosing] = useState(false);
   const [toasts, setToasts] = useState([]);
@@ -152,6 +153,22 @@ function Usuarios() {
     }
     loadData();
   }, [currentPage, pageSize, debouncedSearch, filters.estado, filters.nivel]);
+
+  const mapBackendUser = (u) => ({
+    id: u.user_id,
+    nombre: u.user_name,
+    contacto: u.user_contact,
+    email: u.email,
+    direccion: u.user_address,
+    notas: u.notas,
+    ordenes: u.total_orders,
+    totalGastado: u.total_spent,
+    ultimaVisita: u.last_visit ? new Date(u.last_visit) : null,
+    nivelFidelidad: parseInt(u.loyalty_level?.replace('Nivel ', '') || '1'),
+    estado: u.state ? 'Activo' : 'Inactivo',
+    fechaRegistro: u.fecha_registro ? new Date(u.fecha_registro) : new Date(),
+    sparkline: [0,0,0,0,0,0,0]
+  });
 
   // Debounced search
   const handleSearchChange = (val) => {
@@ -280,6 +297,7 @@ function Usuarios() {
     const handler = (e) => {
       if (e.key === 'Escape') {
         if (isModalOpen) setIsModalOpen(false);
+        else if (editUser) setEditUser(null);
         else if (drawerUser) closeDrawer();
       }
     };
@@ -306,25 +324,16 @@ function Usuarios() {
 
   // Add user
   const handleUserCreated = (newUser) => {
-    // Para simplificar y asegurar consistencia, recargamos la data del servidor
-    // o mapeamos el objeto que viene del backend.
-    const mapped = {
-      id: newUser.user_id,
-      nombre: newUser.user_name,
-      contacto: newUser.user_contact,
-      email: newUser.email,
-      direccion: newUser.user_address,
-      ordenes: newUser.total_orders || 0,
-      totalGastado: newUser.total_spent || 0,
-      ultimaVisita: newUser.last_visit ? new Date(newUser.last_visit) : null,
-      nivelFidelidad: parseInt(newUser.loyalty_level?.replace('Nivel ', '') || '1'),
-      estado: newUser.state ? 'Activo' : 'Inactivo',
-      fechaRegistro: new Date(),
-      sparkline: [0,0,0,0,0,0,0]
-    };
-    setUsers(prev => [mapped, ...prev]);
+    setUsers(prev => [mapBackendUser(newUser), ...prev]);
     setIsModalOpen(false);
     showToast('Usuario creado exitosamente', '✅');
+  };
+
+  const handleUserUpdated = (updatedUser) => {
+    const mapped = mapBackendUser(updatedUser);
+    setUsers(prev => prev.map(u => u.id === mapped.id ? mapped : u));
+    setEditUser(null);
+    showToast('Usuario actualizado exitosamente', '✅');
   };
 
   // Bulk actions
@@ -508,7 +517,7 @@ function Usuarios() {
                     isSelected={selected.has(user.id)}
                     onSelect={() => toggleSelect(user.id)}
                     onRowClick={() => openDrawer(user)}
-                    onEdit={(e) => { e.stopPropagation(); openDrawer(user); }}
+                    onEdit={(e) => { e.stopPropagation(); setEditUser(user); }}
                     onDelete={(e) => {
                       e.stopPropagation();
                       setUsers(prev => prev.map(u => u.id === user.id ? { ...u, estado: 'Inactivo' } : u));
@@ -544,23 +553,33 @@ function Usuarios() {
         />
       )}
 
-      {/* Modal */}
+      {/* Modals */}
       {isModalOpen && (
-        <NewUserModal
+        <UserModal
           onClose={() => setIsModalOpen(false)}
           onSave={handleUserCreated}
+        />
+      )}
+
+      {editUser && (
+        <UserModal
+          initialData={editUser}
+          onClose={() => setEditUser(null)}
+          onSave={handleUserUpdated}
         />
       )}
 
       {/* Drawer */}
       {drawerUser && (
         <UserDrawer
-          user={drawerUser}
+          user={users.find(u => u.id === drawerUser.id) || drawerUser}
           closing={drawerClosing}
           onClose={closeDrawer}
+          onEdit={() => { closeDrawer(); setEditUser(drawerUser); }}
           onInactivate={() => {
-            setUsers(prev => prev.map(u => u.id === drawerUser.id ? { ...u, estado: 'Inactivo' } : u));
-            showToast(`${drawerUser.nombre} inactivado`, '🔴');
+            const u = users.find(u => u.id === drawerUser.id) || drawerUser;
+            setUsers(prev => prev.map(item => item.id === u.id ? { ...item, estado: 'Inactivo' } : item));
+            showToast(`${u.nombre} inactivado`, '🔴');
             closeDrawer();
           }}
         />
@@ -722,9 +741,17 @@ function Pagination({ total, currentPage, pageSize, totalPages, onPageChange, on
   );
 }
 
-/* ── NewUserModal ──────────────────────────────────────── */
-function NewUserModal({ onClose, onSave }) {
-  const [form, setForm] = useState({ nombre: '', email: '', contacto: '', direccion: '', notas: '', estado: true });
+/* ── UserModal (Create / Edit) ─────────────────────────── */
+function UserModal({ onClose, onSave, initialData = null }) {
+  const isEdit = !!initialData;
+  const [form, setForm] = useState({
+    nombre: initialData?.nombre || '',
+    email: initialData?.email || '',
+    contacto: initialData?.contacto || '',
+    direccion: initialData?.direccion || '',
+    notas: initialData?.notas || '',
+    estado: isEdit ? (initialData.estado === 'Activo') : true
+  });
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [shake, setShake] = useState(false);
@@ -758,7 +785,20 @@ function NewUserModal({ onClose, onSave }) {
     }
     setSaving(true);
     try {
-      const result = await createUsuario(form);
+      let result;
+      if (isEdit) {
+        result = await updateUsuario(initialData.id, {
+          user_name: form.nombre,
+          email: form.email,
+          user_contact: form.contacto,
+          user_address: form.direccion,
+          notas: form.notas,
+          state: form.estado,
+          user_type: 'B2C'
+        });
+      } else {
+        result = await createUsuario(form);
+      }
       onSave(result);
     } catch (err) {
       setErrors({ submit: err.message });
@@ -773,7 +813,9 @@ function NewUserModal({ onClose, onSave }) {
     <div className="u-modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()} role="dialog" aria-modal="true" aria-labelledby="modal-title">
       <div className={`u-modal ${shake ? 'shake' : ''}`}>
         <div className="u-modal__header">
-          <h2 className="u-modal__title" id="modal-title">Nuevo Usuario</h2>
+          <h2 className="u-modal__title" id="modal-title">
+            {isEdit ? `Editar ${initialData.nombre}` : 'Nuevo Usuario'}
+          </h2>
           <button className="u-close-btn" onClick={onClose} aria-label="Cerrar"><XIcon /></button>
         </div>
 
@@ -847,15 +889,15 @@ function NewUserModal({ onClose, onSave }) {
 
             <div className="u-toggle-row">
               <div>
-                <div className="u-toggle-label-text">Estado inicial</div>
+                <div className="u-toggle-label-text">Estado</div>
                 <div className="u-toggle-sub">{form.estado ? 'El usuario podrá recibir servicios' : 'El usuario estará inactivo'}</div>
               </div>
               <label className="u-toggle-switch">
                 <input
-                  type="checkbox"
-                  checked={form.estado}
-                  onChange={e => setForm(f => ({ ...f, estado: e.target.checked }))}
-                  aria-label="Estado activo"
+                   type="checkbox"
+                   checked={form.estado}
+                   onChange={e => setForm(f => ({ ...f, estado: e.target.checked }))}
+                   aria-label="Estado activo"
                 />
                 <div className="u-toggle-track" />
                 <div className="u-toggle-thumb" />
@@ -867,7 +909,7 @@ function NewUserModal({ onClose, onSave }) {
             <button type="button" className="u-btn u-btn-outline" onClick={onClose}>Cancelar</button>
             <BlockedAction>
             <button type="submit" className="u-btn u-btn-primary" disabled={saving}>
-              {saving ? <><div className="u-spinner" /> Guardando...</> : 'Guardar Usuario'}
+              {saving ? <><div className="u-spinner" /> Guardando...</> : isEdit ? 'Guardar Cambios' : 'Guardar Usuario'}
             </button>
             </BlockedAction>
           </div>
@@ -888,7 +930,7 @@ function mapEstado(order_status) {
   }
 }
 
-function UserDrawer({ user, closing, onClose, onInactivate }) {
+function UserDrawer({ user, closing, onClose, onEdit, onInactivate }) {
   const [progressReady, setProgressReady] = useState(false);
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
@@ -941,7 +983,7 @@ function UserDrawer({ user, closing, onClose, onInactivate }) {
               <span className="u-badge u-badge-orange">{NIVEL_LABELS[user.nivelFidelidad]}</span>
             </div>
             <div className="u-drawer__actions">
-              <button className="u-btn u-btn-outline u-btn-sm">
+              <button className="u-btn u-btn-outline u-btn-sm" onClick={onEdit}>
                 <PencilIcon /> Editar
               </button>
               <button className="u-btn u-btn-ghost u-btn-sm">⋮ Más</button>

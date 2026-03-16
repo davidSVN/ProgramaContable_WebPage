@@ -23,7 +23,7 @@ def _dto_to_response(dto: ProveedorDTO) -> ProveedorResponse:
     )
 
 
-@router.get("/", response_model=List[ProveedorResponse])
+@router.get("", response_model=List[ProveedorResponse])
 async def listar_proveedores(
     search_names: List[str] = Query(default=[]),
     search_contacts: List[str] = Query(default=[]),
@@ -40,7 +40,7 @@ async def listar_proveedores(
     return [_dto_to_response(dto) for dto in dtos]
 
 
-@router.post("/", response_model=ProveedorResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ProveedorResponse, status_code=status.HTTP_201_CREATED)
 async def crear_proveedor(
     datos: ProveedorCreate,
     current_user: AppUser = Depends(require_admin_or_above),

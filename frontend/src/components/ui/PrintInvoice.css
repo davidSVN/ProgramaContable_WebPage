@@ -1,0 +1,190 @@
+@media screen {
+    .print-only {
+        display: none;
+    }
+}
+
+@media print {
+    @page {
+        margin: 0;
+        size: 80mm auto;
+    }
+
+    body * {
+        visibility: hidden;
+    }
+
+    .print-area, .print-area * {
+        visibility: visible;
+    }
+
+    .print-area {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 80mm;
+        padding: 5mm;
+        box-sizing: border-box;
+        font-family: 'Courier New', Courier, monospace;
+        color: black;
+        font-size: 12px;
+        line-height: 1.2;
+    }
+
+    .no-print {
+        display: none !important;
+    }
+}
+
+.invoice-container {
+    width: 100%;
+}
+
+.header {
+    text-align: center;
+    margin-bottom: 5mm;
+}
+
+.logo-placeholder {
+    width: 50mm;
+    height: 15mm;
+    border: 1px dashed #ccc;
+    margin: 0 auto 5mm;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: #888;
+}
+
+.business-name {
+    font-size: 18px;
+    font-weight: bold;
+    margin: 2mm 0;
+}
+
+.business-info {
+    font-size: 11px;
+}
+
+.domicilios-box {
+    border: 2px solid black;
+    padding: 2mm;
+    text-align: center;
+    margin: 5mm 0;
+}
+
+.domicilios-title {
+    font-weight: bold;
+    font-size: 13px;
+    margin-bottom: 1mm;
+}
+
+.domicilios-phone {
+    font-size: 16px;
+    font-weight: bold;
+}
+
+.order-title {
+    text-align: center;
+    font-size: 14px;
+    margin-top: 5mm;
+}
+
+.order-number-box {
+    background: black;
+    color: white;
+    text-align: center;
+    padding: 3mm;
+    margin: 2mm 0;
+    font-size: 24px;
+    font-weight: bold;
+}
+
+.barcode-container {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 5mm;
+}
+
+.client-section {
+    margin-bottom: 5mm;
+}
+
+.info-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 1mm;
+}
+
+.info-label {
+    font-weight: bold;
+}
+
+.services-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 5mm 0;
+}
+
+.services-table th {
+    border-top: 1px dashed black;
+    border-bottom: 1px dashed black;
+    text-align: left;
+    padding: 1mm 0;
+    font-size: 11px;
+}
+
+.services-table td {
+    padding: 1mm 0;
+    font-size: 11px;
+}
+
+.col-qty { width: 10%; }
+.col-detail { width: 50%; }
+.col-unit { width: 20%; text-align: right; }
+.col-total { width: 20%; text-align: right; }
+
+.totals-section {
+    text-align: right;
+    margin-top: 5mm;
+}
+
+.total-pzs {
+    float: left;
+    font-size: 11px;
+}
+
+.totals-row {
+    display: flex;
+    justify-content: flex-end;
+    gap: 5mm;
+    margin-bottom: 1mm;
+}
+
+.total-main {
+    font-size: 16px;
+    font-weight: bold;
+    border-top: 1px solid black;
+    margin-top: 2mm;
+    padding-top: 2mm;
+}
+
+.footer-section {
+    margin-top: 10mm;
+    font-size: 10px;
+    text-align: center;
+}
+
+.legal-notice {
+    font-weight: bold;
+    margin: 5mm 0;
+    border-top: 1px dashed #ccc;
+    padding-top: 5mm;
+}
+
+.metadata {
+    font-size: 9px;
+    color: #555;
+    margin-top: 5mm;
+}

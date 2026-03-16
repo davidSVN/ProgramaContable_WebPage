@@ -30,8 +30,8 @@ async def contar_usuarios(
     )
     return {"total": total}
 
-# 2. GET /usuarios/
-@router.get("/", response_model=List[UsuarioResponse])
+# 2. GET /usuarios
+@router.get("", response_model=List[UsuarioResponse])
 async def listar_usuarios(
     user_type: Optional[str] = Query(default=None),
     search_names: List[str] = Query(default=[]),
@@ -127,8 +127,8 @@ async def obtener_usuario(
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
     return usuario
 
-# 5. POST /usuarios/
-@router.post("/", response_model=UsuarioResponse, status_code=status.HTTP_201_CREATED)
+# 5. POST /usuarios
+@router.post("", response_model=UsuarioResponse, status_code=status.HTTP_201_CREATED)
 async def crear_usuario(
     data: UsuarioCreate,
     db: AsyncSession = Depends(get_db),
