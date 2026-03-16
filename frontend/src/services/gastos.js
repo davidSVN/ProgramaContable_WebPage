@@ -1,4 +1,4 @@
-import api from './api';
+import { api } from './api';
 
 export const getGastos = (params) =>
   api.get(`/gastos?${new URLSearchParams(params)}`);

@@ -1,4 +1,4 @@
-import api from './api';
+import { api } from './api';
 
 // GET /api/usuarios?user_type=B2B
 export async function getInstituciones({ search = '', estado = '', pago = '' } = {}) {

@@ -1,4 +1,4 @@
-import api from './api';
+import { api } from './api';
 
 // GET /api/usuarios?page=1&limit=15&search=&estado=&nivel=&user_type=B2C
 export async function getUsuarios({ page = 1, limit = 15, search = '', estado = '', nivel = '', user_type = 'B2C' } = {}) {
