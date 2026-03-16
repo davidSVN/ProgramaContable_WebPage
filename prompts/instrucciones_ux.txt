@@ -1,0 +1,578 @@
+Read first:
+- app/routers/auth.py
+- app/dependencies.py
+- app/schemas.py
+- app/models.py
+- app/services/auth_service.py
+- app/routers/gastos.py (for spending data pattern)
+- app/routers/ordenes.py (for orders data pattern)
+
+Make 3 surgical changes to existing files + create 2 new files.
+Do NOT break any existing endpoints.
+
+━━━ CHANGE 1: app/schemas.py ━━━
+
+Add `plan` field to TokenResponse and UserMe:
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user_id: int
+    role: str
+    tenant_id: Optional[int] = None
+    username: str
+    plan: str = "basic"   # ← ADD THIS
+
+class UserMe(BaseModel):
+    id: int
+    email: str
+    username: str
+    role: str
+    tenant_id: Optional[int] = None
+    is_active: bool
+    plan: str = "basic"   # ← ADD THIS
+
+━━━ CHANGE 2: app/routers/auth.py ━━━
+
+In the /login endpoint, include plan in JWT payload and TokenResponse.
+The AppUser model already has tenant relationship with lazy="selectin"
+so user.tenant is already loaded.
+
+token = auth_service.crear_token_jwt({
+    "user_id": user.id,
+    "email": user.email,
+    "role": user.role,
+    "tenant_id": user.tenant_id,
+    "plan": user.tenant.plan if user.tenant else "basic",  # ← ADD
+})
+
+return TokenResponse(
+    access_token=token,
+    user_id=user.id,
+    role=user.role,
+    tenant_id=user.tenant_id,
+    username=user.username,
+    plan=user.tenant.plan if user.tenant else "basic",    # ← ADD
+)
+
+Also update the /me endpoint to return plan:
+In UserMe.model_validate(current_user), the plan comes from
+current_user.tenant.plan — add it manually since UserMe maps
+from AppUser not Tenant:
+
+return UserMe(
+    id=current_user.id,
+    email=current_user.email,
+    username=current_user.username,
+    role=current_user.role,
+    tenant_id=current_user.tenant_id,
+    is_active=current_user.is_active,
+    plan=current_user.tenant.plan if current_user.tenant else "basic",
+)
+
+━━━ CHANGE 3: app/dependencies.py ━━━
+
+Add new dependency at the bottom (do not modify existing ones):
+
+async def require_premium(
+    current_user: AppUser = Depends(get_current_user),
+) -> AppUser:
+    """Raises 403 if tenant plan is not premium."""
+    if not current_user.tenant or current_user.tenant.plan != "premium":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Funcionalidad exclusiva del plan Premium",
+        )
+    return current_user
+
+━━━ NEW FILE 1: app/services/ml_engine.py ━━━
+
+Create this file with pure Python + pandas + numpy only.
+No sklearn, no tensorflow, no heavy dependencies.
+
+Required classes and methods:
+```python
+import numpy as np
+import pandas as pd
+from datetime import datetime, timedelta
+from typing import Optional
+from dataclasses import dataclass, field
+
+
+@dataclass
+class ClienteMLProfile:
+    user_id: int
+    user_name: str
+    frecuencia_promedio_dias: float      # avg days between orders
+    ticket_promedio: float               # avg order value
+    varianza_ticket: float               # ticket variance
+    servicios_favoritos: list            # top 3 service names
+    tendencia: str                       # "creciendo"|"estable"|"decayendo"
+    riesgo_churn: float                  # 0.0 to 1.0
+    churn_categoria: str                 # "bajo"|"medio"|"alto"
+    lifetime_value_estimado: float       # LTV projection 12 months
+    dias_sin_orden: int
+    total_ordenes: int
+    total_gastado: float
+    ultimo_pedido: Optional[datetime]
+    segmento_rfm: str                    # "campeon"|"leal"|"en_riesgo"|"perdido"|"nuevo"
+    descuento_sugerido: Optional[float]  # % discount suggestion
+    razon_descuento: Optional[str]
+
+
+class MLEngine:
+
+    def __init__(self, tenant_id: int):
+        self.tenant_id = tenant_id
+        self._cache: dict = {}
+        self._cache_ts: Optional[datetime] = None
+        self.CACHE_TTL_HOURS = 1
+
+    def _is_cache_valid(self) -> bool:
+        if not self._cache_ts:
+            return False
+        return (datetime.utcnow() - self._cache_ts).total_seconds() < 3600
+
+    # ── Core: build profiles from raw order data ──────────────────
+
+    def calcular_perfiles(self, orders_df: pd.DataFrame) -> list[ClienteMLProfile]:
+        """
+        orders_df columns required:
+          user_id, user_name, created_at, total_amount, balance_due,
+          is_paid, items_description, net_income_value
+        
+        Returns list of ClienteMLProfile, one per unique user_id.
+        """
+        perfiles = []
+        hoy = datetime.utcnow()
+
+        for user_id, grupo in orders_df.groupby("user_id"):
+            grupo = grupo.sort_values("created_at")
+            user_name = grupo["user_name"].iloc[-1]
+
+            # Basic metrics
+            total_ordenes = len(grupo)
+            total_gastado = grupo["total_amount"].sum()
+            ticket_promedio = grupo["total_amount"].mean()
+            varianza_ticket = grupo["total_amount"].std() or 0.0
+            ultimo_pedido = pd.to_datetime(grupo["created_at"].iloc[-1])
+            dias_sin_orden = (hoy - ultimo_pedido.to_pydatetime()).days
+
+            # Frequency: avg days between consecutive orders
+            if total_ordenes > 1:
+                fechas = pd.to_datetime(grupo["created_at"])
+                deltas = fechas.diff().dropna().dt.days
+                frecuencia_promedio_dias = float(deltas.mean())
+            else:
+                frecuencia_promedio_dias = 30.0
+
+            # Trend: compare last 30 days vs previous 30 days
+            corte = hoy - timedelta(days=30)
+            corte_anterior = hoy - timedelta(days=60)
+            recientes = grupo[pd.to_datetime(grupo["created_at"]) >= corte]
+            anteriores = grupo[
+                (pd.to_datetime(grupo["created_at"]) >= corte_anterior) &
+                (pd.to_datetime(grupo["created_at"]) < corte)
+            ]
+            if len(recientes) > len(anteriores):
+                tendencia = "creciendo"
+            elif len(recientes) < len(anteriores):
+                tendencia = "decayendo"
+            else:
+                tendencia = "estable"
+
+            # Churn score (0.0 to 1.0) — no sklearn needed
+            ratio_ausencia = min(dias_sin_orden / max(frecuencia_promedio_dias, 1), 3.0) / 3.0
+            ratio_frecuencia = 1.0 - min(
+                len(recientes) / max(frecuencia_promedio_dias / 7, 1), 1.0
+            )
+            penalizacion_tendencia = 0.2 if tendencia == "decayendo" else 0.0
+            riesgo_churn = min(
+                round(0.5 * ratio_ausencia + 0.3 * ratio_frecuencia + 0.2 * penalizacion_tendencia, 2),
+                1.0
+            )
+            if riesgo_churn < 0.35:
+                churn_categoria = "bajo"
+            elif riesgo_churn < 0.65:
+                churn_categoria = "medio"
+            else:
+                churn_categoria = "alto"
+
+            # LTV projection: ticket_promedio * (365 / frecuencia) * 0.8 retention factor
+            ltv = ticket_promedio * (365.0 / max(frecuencia_promedio_dias, 1)) * 0.8
+
+            # RFM Segmentation
+            # R: days since last order (lower = better), scored 1-5
+            r_score = 5 if dias_sin_orden <= 15 else (
+                      4 if dias_sin_orden <= 30 else (
+                      3 if dias_sin_orden <= 60 else (
+                      2 if dias_sin_orden <= 90 else 1)))
+            # F: total orders, scored 1-5
+            f_score = 5 if total_ordenes >= 20 else (
+                      4 if total_ordenes >= 10 else (
+                      3 if total_ordenes >= 5 else (
+                      2 if total_ordenes >= 2 else 1)))
+            # M: total spent, scored 1-5 (relative thresholds)
+            m_score = 5 if total_gastado >= 500000 else (
+                      4 if total_gastado >= 200000 else (
+                      3 if total_gastado >= 100000 else (
+                      2 if total_gastado >= 50000 else 1)))
+
+            rfm = r_score + f_score + m_score
+            if rfm >= 13:
+                segmento_rfm = "campeon"
+            elif rfm >= 10:
+                segmento_rfm = "leal"
+            elif rfm >= 7:
+                segmento_rfm = "en_riesgo"
+            elif r_score <= 2:
+                segmento_rfm = "perdido"
+            else:
+                segmento_rfm = "nuevo"
+
+            # Top services from items_description
+            descripciones = grupo["items_description"].dropna().tolist()
+            # Parse comma-separated items if available
+            servicios_favoritos = []  # populated if items_description has parseable data
+
+            # Discount suggestion
+            descuento_sugerido = None
+            razon_descuento = None
+            if churn_categoria == "alto" and ltv > 50000:
+                descuento_sugerido = 15.0
+                razon_descuento = f"Cliente frecuente con {dias_sin_orden} días sin visitar. LTV alto."
+            elif churn_categoria == "medio" and tendencia == "decayendo":
+                descuento_sugerido = 10.0
+                razon_descuento = f"Tendencia decreciente. Última visita hace {dias_sin_orden} días."
+            elif segmento_rfm == "leal" and dias_sin_orden > 20:
+                descuento_sugerido = 8.0
+                razon_descuento = f"Cliente leal que empieza a espaciar visitas."
+
+            perfiles.append(ClienteMLProfile(
+                user_id=int(user_id),
+                user_name=user_name,
+                frecuencia_promedio_dias=round(frecuencia_promedio_dias, 1),
+                ticket_promedio=round(ticket_promedio, 0),
+                varianza_ticket=round(varianza_ticket, 0),
+                servicios_favoritos=servicios_favoritos,
+                tendencia=tendencia,
+                riesgo_churn=riesgo_churn,
+                churn_categoria=churn_categoria,
+                lifetime_value_estimado=round(ltv, 0),
+                dias_sin_orden=dias_sin_orden,
+                total_ordenes=total_ordenes,
+                total_gastado=round(total_gastado, 0),
+                ultimo_pedido=ultimo_pedido.to_pydatetime() if ultimo_pedido else None,
+                segmento_rfm=segmento_rfm,
+                descuento_sugerido=descuento_sugerido,
+                razon_descuento=razon_descuento,
+            ))
+
+        return perfiles
+
+    # ── Demand Forecaster ─────────────────────────────────────────
+
+    def forecast_demanda(self, orders_df: pd.DataFrame, semanas: int = 4) -> list[dict]:
+        """
+        Returns weekly demand forecast for next N weeks.
+        Uses Exponential Moving Average + day-of-week factor.
+        """
+        if orders_df.empty:
+            return []
+
+        orders_df["semana"] = pd.to_datetime(orders_df["created_at"]).dt.to_period("W")
+        semanal = orders_df.groupby("semana").size().reset_index(name="ordenes")
+
+        if len(semanal) < 2:
+            return []
+
+        valores = semanal["ordenes"].values.astype(float)
+        alpha = 0.3
+        ema = valores[0]
+        for v in valores[1:]:
+            ema = alpha * v + (1 - alpha) * ema
+
+        forecast = []
+        ultima_semana = pd.Period(semanal["semana"].iloc[-1], freq="W")
+        for i in range(1, semanas + 1):
+            semana_futura = ultima_semana + i
+            # slight decay factor for uncertainty
+            estimado = round(ema * (0.95 ** i))
+            optimista = round(estimado * 1.2)
+            pesimista = round(estimado * 0.8)
+            forecast.append({
+                "semana": str(semana_futura),
+                "estimado": int(estimado),
+                "optimista": int(optimista),
+                "pesimista": int(pesimista),
+            })
+        return forecast
+
+    # ── Financial Summary ─────────────────────────────────────────
+
+    def calcular_income_neto(
+        self,
+        orders_df: pd.DataFrame,
+        gastos_df: pd.DataFrame,
+        periodo_actual: tuple,   # (fecha_inicio, fecha_fin) datetime
+        periodo_anterior: tuple,
+    ) -> dict:
+        """
+        Returns net income comparison between two periods.
+        income_neto = sum(net_income_value from orders) - sum(spent_value from gastos)
+        """
+        def filtrar(df, col, inicio, fin):
+            mask = (pd.to_datetime(df[col]) >= inicio) & (pd.to_datetime(df[col]) <= fin)
+            return df[mask]
+
+        # Current period
+        ord_actual = filtrar(orders_df, "created_at", *periodo_actual)
+        gas_actual = filtrar(gastos_df, "spent_date", *periodo_actual)
+        ingresos_actual = ord_actual["net_income_value"].sum()
+        egresos_actual = gas_actual["spent_value"].sum()
+        neto_actual = ingresos_actual - egresos_actual
+
+        # Previous period
+        ord_anterior = filtrar(orders_df, "created_at", *periodo_anterior)
+        gas_anterior = filtrar(gastos_df, "spent_date", *periodo_anterior)
+        ingresos_anterior = ord_anterior["net_income_value"].sum()
+        egresos_anterior = gas_anterior["spent_value"].sum()
+        neto_anterior = ingresos_anterior - egresos_anterior
+
+        # % change
+        def pct_change(actual, anterior):
+            if anterior == 0:
+                return None
+            return round(((actual - anterior) / abs(anterior)) * 100, 1)
+
+        return {
+            "periodo_actual": {
+                "ingresos": round(ingresos_actual, 0),
+                "egresos": round(egresos_actual, 0),
+                "neto": round(neto_actual, 0),
+            },
+            "periodo_anterior": {
+                "ingresos": round(ingresos_anterior, 0),
+                "egresos": round(egresos_anterior, 0),
+                "neto": round(neto_anterior, 0),
+            },
+            "cambio_pct": {
+                "ingresos": pct_change(ingresos_actual, ingresos_anterior),
+                "egresos": pct_change(egresos_actual, egresos_anterior),
+                "neto": pct_change(neto_actual, neto_anterior),
+            },
+        }
+
+    # ── Retention & Churn Cohort ──────────────────────────────────
+
+    def calcular_retencion(self, orders_df: pd.DataFrame) -> dict:
+        """
+        Monthly retention rate + churn rate for last 6 months.
+        """
+        if orders_df.empty:
+            return {"meses": [], "retencion": [], "churn": []}
+
+        orders_df["mes"] = pd.to_datetime(orders_df["created_at"]).dt.to_period("M")
+        meses = sorted(orders_df["mes"].unique())[-6:]
+
+        resultado = []
+        for i, mes in enumerate(meses):
+            clientes_mes = set(orders_df[orders_df["mes"] == mes]["user_id"])
+            if i == 0:
+                resultado.append({
+                    "mes": str(mes),
+                    "activos": len(clientes_mes),
+                    "retencion_pct": None,
+                    "churn_pct": None,
+                })
+                continue
+            clientes_anterior = set(orders_df[orders_df["mes"] == meses[i-1]]["user_id"])
+            if not clientes_anterior:
+                continue
+            retenidos = clientes_mes & clientes_anterior
+            retencion = round(len(retenidos) / len(clientes_anterior) * 100, 1)
+            churn = round(100 - retencion, 1)
+            resultado.append({
+                "mes": str(mes),
+                "activos": len(clientes_mes),
+                "retencion_pct": retencion,
+                "churn_pct": churn,
+            })
+
+        return {"meses": resultado}
+
+
+# ── Module-level cache per tenant ─────────────────────────────────
+_engines: dict[int, MLEngine] = {}
+
+def get_engine(tenant_id: int) -> MLEngine:
+    if tenant_id not in _engines:
+        _engines[tenant_id] = MLEngine(tenant_id)
+    return _engines[tenant_id]
+```
+
+━━━ NEW FILE 2: app/routers/reportes.py ━━━
+
+Create router with prefix /reportes, tags=["IA & Reportes"].
+All endpoints require get_current_user (any role can view).
+Premium endpoints additionally call require_premium.
+
+Import ml_engine and use it. Fetch raw data from DB, convert to
+pandas DataFrames, pass to ml_engine methods.
+
+Endpoints to create:
+```python
+# ── BASIC PLAN (all tenants) ──────────────────────────────────────
+
+GET /reportes/financiero
+  Query params: periodo ("mes"|"trimestre"|"año"), año: int = current year
+  Returns: income_neto comparison current vs previous period
+  Uses: ml_engine.calcular_income_neto()
+  Fetches: all OrderHeader + SpentBusiness for tenant filtered by period
+
+GET /reportes/ordenes-resumen
+  Query params: fecha_inicio, fecha_fin
+  Returns: {
+    total_ordenes, total_ingresos, total_egresos, income_neto,
+    ordenes_por_estado: dict, ticket_promedio,
+    cambio_pct_vs_anterior: dict
+  }
+
+GET /reportes/clientes-riesgo
+  No params. Basic version: returns clients with dias_sin_orden > 60
+  Returns list: [{user_id, user_name, dias_sin_orden, total_gastado}]
+  Source: query LaundryUser + last OrderHeader date
+
+GET /reportes/servicios-ranking
+  Query params: fecha_inicio, fecha_fin
+  Returns top 10 services by revenue from OrderDetail.service_name
+
+# ── PREMIUM PLAN ONLY ─────────────────────────────────────────────
+
+GET /reportes/ml/perfiles
+  Requires: require_premium
+  Returns all ClienteMLProfile for tenant (computed fresh or from cache)
+  Fetches all OrderHeader for tenant → DataFrame → calcular_perfiles()
+
+GET /reportes/ml/perfil/{user_id}
+  Requires: require_premium
+  Returns single ClienteMLProfile for that user
+
+GET /reportes/ml/oportunidades-descuento
+  Requires: require_premium
+  Returns only profiles where descuento_sugerido is not None
+  Sorted by riesgo_churn desc
+
+GET /reportes/ml/segmentos-rfm
+  Requires: require_premium
+  Returns count per segmento_rfm:
+  {"campeon": N, "leal": N, "en_riesgo": N, "perdido": N, "nuevo": N}
+
+GET /reportes/ml/forecast-demanda
+  Requires: require_premium
+  Returns 4-week forecast from ml_engine.forecast_demanda()
+
+GET /reportes/retencion
+  Requires: require_premium
+  Returns ml_engine.calcular_retencion() result
+
+POST /reportes/ml/recalcular
+  Requires: require_premium
+  Forces cache invalidation for this tenant's MLEngine
+  Returns {"status": "ok", "recalculado_at": datetime}
+```
+
+For each endpoint that needs orders data:
+```python
+# Pattern to fetch orders as DataFrame:
+from sqlalchemy import select
+result = await db.execute(
+    select(OrderHeader).where(OrderHeader.tenant_id == current_user.tenant_id)
+)
+orders = result.scalars().all()
+orders_df = pd.DataFrame([{
+    "user_id": o.user_id,
+    "user_name": o.user_name,
+    "created_at": o.date,
+    "total_amount": o.total_amount,
+    "net_income_value": o.net_income_value,
+    "balance_due": o.balance_due,
+    "is_paid": o.is_paid,
+    "items_description": o.items_description,
+    "order_status": o.order_status,
+} for o in orders])
+
+# Pattern for gastos:
+result = await db.execute(
+    select(SpentBusiness).where(SpentBusiness.tenant_id == current_user.tenant_id)
+)
+gastos = result.scalars().all()
+gastos_df = pd.DataFrame([{
+    "spent_date": g.spent_date,
+    "spent_value": g.spent_value,
+    "spent_category": g.spent_category,
+} for g in gastos])
+```
+
+━━━ NEW FILE 3: app/services/scheduler.py ━━━
+
+Nightly recalculation of ML profiles for all active tenants.
+Uses asyncio — no extra dependencies needed.
+```python
+import asyncio
+import logging
+from datetime import datetime, time
+from app.services.ml_engine import get_engine, _engines
+
+logger = logging.getLogger(__name__)
+
+async def recalcular_todos_los_tenants(db_factory):
+    """
+    Recalculates ML profiles for all active tenants.
+    Called once per night at 2:00 AM server time.
+    """
+    logger.info(f"[Scheduler] Iniciando recálculo nocturno - {datetime.utcnow()}")
+    for tenant_id, engine in _engines.items():
+        try:
+            engine._cache_ts = None  # invalidate cache
+            logger.info(f"[Scheduler] Cache invalidado para tenant {tenant_id}")
+        except Exception as e:
+            logger.error(f"[Scheduler] Error tenant {tenant_id}: {e}")
+    logger.info("[Scheduler] Recálculo nocturno completado")
+
+async def run_nightly_scheduler(db_factory):
+    """Run forever, trigger at 2:00 AM every night."""
+    while True:
+        now = datetime.utcnow()
+        target = datetime.combine(now.date(), time(2, 0))
+        if now >= target:
+            from datetime import timedelta
+            target = target + timedelta(days=1)
+        wait_seconds = (target - now).total_seconds()
+        logger.info(f"[Scheduler] Próximo recálculo en {wait_seconds/3600:.1f} horas")
+        await asyncio.sleep(wait_seconds)
+        await recalcular_todos_los_tenants(db_factory)
+```
+
+In app/main.py, add startup event to launch scheduler:
+```python
+@app.on_event("startup")
+async def start_scheduler():
+    from app.services.scheduler import run_nightly_scheduler
+    from app.database import get_db
+    asyncio.create_task(run_nightly_scheduler(get_db))
+```
+
+Also register the new router in main.py:
+```python
+from app.routers import reportes
+app.include_router(reportes.router, prefix="/reportes", tags=["IA & Reportes"])
+```
+
+━━━ VALIDATION ━━━
+After all changes, verify:
+1. POST /auth/login response includes "plan" field
+2. GET /auth/me response includes "plan" field
+3. GET /reportes/financiero?periodo=mes returns income comparison
+4. GET /reportes/ml/perfiles returns 403 for basic tenant
+5. No existing endpoints broken
