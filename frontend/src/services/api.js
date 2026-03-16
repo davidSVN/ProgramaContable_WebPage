@@ -1,8 +1,19 @@
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const VITE_API_URL = import.meta.env.VITE_API_URL;
+// Normalizar BASE_URL: asegurar que existe y no tiene barra al final
+const BASE_URL = VITE_API_URL ? VITE_API_URL.replace(/\/$/, '') : '';
+
+if (!BASE_URL && import.meta.env.PROD) {
+  console.warn("VITE_API_URL no está definida en producción. Las peticiones fallarán o usarán rutas locales.");
+}
+
 const TOKEN_KEY = 'washflow_token';
 
 async function request(path, options = {}) {
   const token = localStorage.getItem(TOKEN_KEY);
+  
+  // Asegurar que el path comience con /
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  const url = `${BASE_URL}/api${cleanPath}`;
 
   const headers = {
     'Content-Type': 'application/json',
@@ -12,9 +23,10 @@ async function request(path, options = {}) {
 
   let res;
   try {
-    res = await fetch(`${BASE_URL}/api${path}`, { ...options, headers });
+    res = await fetch(url, { ...options, headers });
   } catch (err) {
-    throw new Error('Error de red: no se pudo conectar con el servidor');
+    console.error(`Error de red al conectar con ${url}:`, err);
+    throw new Error('Error de red: no se pudo conectar con el servidor. Verifique si el backend está activo.');
   }
 
   if (res.status === 401) {
