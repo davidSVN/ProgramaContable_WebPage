@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import './Instituciones.css';
 import { getInstituciones, createInstitucion, getInstitucionOrdenes, getInstitucionFacturas } from '../../services/instituciones';
+import { BlockedAction } from '../ui/BlockedAction';
 
 /* ── Helpers ───────────────────────────────────────────── */
 const nowMs = Date.now();
@@ -34,7 +36,7 @@ const mapBackendInst = (i) => ({
   estado: i.state ? 'Activo' : 'Inactivo',
   ordenes: i.total_orders || 0,
   revenueTotal: i.total_spent || 0,
-  ordenesMes: 0, 
+  ordenesMes: i.ordenes_mes || 0, 
   facturasPendientes: i.pending_invoices || 0
 });
 
@@ -213,9 +215,11 @@ export default function Instituciones() {
           <button className="i-btn i-btn-outline" onClick={handleExport}>
             <DownloadIcon /> Exportar CSV
           </button>
+          <BlockedAction>
           <button className="i-btn i-btn-primary" onClick={() => setIsModalOpen(true)}>
             <PlusIcon /> Nueva Institución
           </button>
+          </BlockedAction>
         </div>
       </div>
 
@@ -450,7 +454,7 @@ function NewInstModal({ onClose, onSave }) {
 
   const setF = (key, val) => { setForm(f => ({ ...f, [key]: val })); setErrors(e => ({ ...e, [key]: '' })); };
 
-  return (
+  return createPortal(
     <div className="i-modal-overlay" onClick={e => e.target === e.currentTarget && onClose()} role="dialog" aria-modal="true" aria-labelledby="i-modal-title">
       <div className={`i-modal ${shake ? 'shake' : ''}`}>
         <div className="i-modal__header">
@@ -541,14 +545,16 @@ function NewInstModal({ onClose, onSave }) {
 
           <div className="i-modal__footer">
             <button type="button" className="i-btn i-btn-outline" onClick={onClose}>Cancelar</button>
+            <BlockedAction>
             <button type="submit" className="i-btn i-btn-primary" disabled={saving}>
               {saving ? <><div className="i-spinner" /> Guardando...</> : 'Guardar Institución'}
             </button>
+            </BlockedAction>
           </div>
         </form>
       </div>
     </div>
-  );
+  , document.body);
 }
 
 /* ── InstDrawer ────────────────────────────────────────── */
@@ -577,7 +583,7 @@ function InstDrawer({ inst, closing, onClose, onInactivate }) {
     loadExtras();
   }, [inst.id]);
 
-  return (
+  return createPortal(
     <>
       <div className="i-drawer-overlay" onClick={onClose} aria-hidden="true" />
       <div className={`i-drawer ${closing ? 'closing' : ''}`} role="dialog" aria-modal="true" aria-label={`Perfil de ${inst.nombre}`}>
@@ -714,13 +720,15 @@ function InstDrawer({ inst, closing, onClose, onInactivate }) {
           <button className="i-btn i-btn-outline" style={{ width:'100%', justifyContent:'center' }}>
             Ver todas las órdenes
           </button>
+          <BlockedAction>
           <button className="i-btn i-btn-danger-ghost" style={{ width:'100%', justifyContent:'center' }} onClick={onInactivate}>
             {inst.estado === 'Activo' ? 'Inactivar institución' : 'Activar institución'}
           </button>
+          </BlockedAction>
         </div>
       </div>
     </>
-  );
+  , document.body);
 }
 
 /* ── Icons ─────────────────────────────────────────────── */

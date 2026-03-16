@@ -5,6 +5,7 @@ from typing import Optional
 import bcrypt
 from jose import JWTError, jwt
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from dotenv import load_dotenv
 
@@ -52,7 +53,11 @@ async def login(db: AsyncSession, email: str, password: str) -> Optional[AppUser
     Verifica que el usuario exista, esté activo y que su tenant esté activo.
     Retorna None si cualquier validación falla.
     """
-    result = await db.execute(select(AppUser).where(AppUser.email == email))
+    result = await db.execute(
+        select(AppUser)
+        .where(AppUser.email == email)
+        .options(selectinload(AppUser.tenant))
+    )
     user = result.scalars().first()
     if not user:
         return None
@@ -63,10 +68,8 @@ async def login(db: AsyncSession, email: str, password: str) -> Optional[AppUser
     if not verificar_password(password, user.password_hash):
         return None
 
-    # Si el usuario pertenece a un tenant, verificar que el tenant esté activo
+    # El tenant ya debería estar cargado por selectinload
     if user.tenant_id is not None:
-        # Acceder a la relación cargada (eager) o cargar explícitamente
-        await db.refresh(user, ["tenant"])
         if user.tenant is None or not user.tenant.is_active:
             return None
 

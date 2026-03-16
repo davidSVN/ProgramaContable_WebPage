@@ -55,6 +55,7 @@ async def listar_usuarios(
 @router.get("/search", response_model=List[UsuarioResponse])
 async def buscar_usuario_por_nombre(
     q: str = Query(default="", min_length=0),
+    user_type: Optional[str] = Query(default=None),
     limit: int = Query(default=13),
     db: AsyncSession = Depends(get_db),
     current_user: AppUser = Depends(get_current_user)
@@ -67,6 +68,7 @@ async def buscar_usuario_por_nombre(
         db=db,
         tenant_id=current_user.tenant_id,
         query=q,
+        user_type=user_type,
         limit=limit
     )
 

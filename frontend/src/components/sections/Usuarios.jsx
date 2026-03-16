@@ -1,6 +1,8 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import './Usuarios.css';
 import { getUsuarios, createUsuario, getUsuarioOrdenes } from '../../services/usuarios';
+import { BlockedAction } from '../ui/BlockedAction';
 
 /* ── Helpers ───────────────────────────────────────────── */
 const now = Date.now();
@@ -8,12 +10,14 @@ const daysAgo = (n) => new Date(now - n * 86400000);
 
 const AVATAR_COLORS = ['#FF6B2B','#2B7FFF','#2BA05A','#9B5DFF','#E53E8A','#0BADCF','#E8A020'];
 function avatarColor(name) {
+  if (!name) return AVATAR_COLORS[0];
   let h = 0;
   for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h);
   return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
 }
 function initials(name) {
-  return name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase();
+  if (!name) return '?';
+  return name.split(' ').filter(Boolean).slice(0, 2).map(n => n[0]).join('').toUpperCase();
 }
 function relTime(date) {
   if (!date) return 'nunca';
@@ -43,7 +47,7 @@ const INITIAL_USERS = [];
 
 const ORDER_STATUS_COLOR = {
   'Entregado':   { bg: 'rgba(43,160,90,0.1)',   color: '#2BA05A' },
-  'En proceso':  { bg: 'rgba(255,107,43,0.1)',   color: '#FF6B2B' },
+  'En progreso':  { bg: 'rgba(255,107,43,0.1)',   color: '#FF6B2B' },
   'Pendiente':   { bg: 'rgba(43,127,255,0.1)',   color: '#2B7FFF' },
   'Cancelado':   { bg: 'rgba(107,101,96,0.1)',   color: '#6B6560' },
 };
@@ -62,8 +66,35 @@ function ToastContainer({ toasts, onRemove }) {
   );
 }
 
+/* ── Error Boundary ────────────────────────────────────── */
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { hasError: false }; }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(error, info) { console.error("Usuarios Error:", error, info); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: 40, textAlign: 'center', background: 'var(--surface)', border: 'var(--border)', borderRadius: 8, margin: 20 }}>
+          <h2 style={{ marginBottom: 12 }}>Ups, algo salió mal</h2>
+          <p style={{ color: 'var(--ds-text-secondary)', marginBottom: 20 }}>Hubo un error al renderizar esta sección.</p>
+          <button className="u-btn u-btn-primary" onClick={() => window.location.reload()}>Recargar página</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 /* ── Main Export ───────────────────────────────────────── */
-export default function Usuarios() {
+export default function UsuariosWrapper(props) {
+  return (
+    <ErrorBoundary>
+      <Usuarios {...props} />
+    </ErrorBoundary>
+  );
+}
+
+function Usuarios() {
   const [users, setUsers] = useState(INITIAL_USERS);
   const [totalItems, setTotalItems] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -107,7 +138,7 @@ export default function Usuarios() {
           ultimaVisita: u.last_visit ? new Date(u.last_visit) : null,
           nivelFidelidad: parseInt(u.loyalty_level?.replace('Nivel ', '') || '1'),
           estado: u.state ? 'Activo' : 'Inactivo',
-          fechaRegistro: u.last_visit ? new Date(u.last_visit) : new Date(),
+          fechaRegistro: u.fecha_registro ? new Date(u.fecha_registro) : new Date(),
           sparkline: [0,0,0,0,0,0,0]
         }));
         
@@ -169,8 +200,14 @@ export default function Usuarios() {
     // Sort
     result.sort((a, b) => {
       let va = a[sortConfig.column], vb = b[sortConfig.column];
-      if (sortConfig.column === 'ultimaVisita') { va = a.ultimaVisita.getTime(); vb = b.ultimaVisita.getTime(); }
-      if (sortConfig.column === 'nombre') { va = a.nombre.toLowerCase(); vb = b.nombre.toLowerCase(); }
+      if (sortConfig.column === 'ultimaVisita') { 
+        va = a.ultimaVisita ? a.ultimaVisita.getTime() : 0; 
+        vb = b.ultimaVisita ? b.ultimaVisita.getTime() : 0; 
+      }
+      if (sortConfig.column === 'nombre') { 
+        va = (a.nombre || '').toLowerCase(); 
+        vb = (b.nombre || '').toLowerCase(); 
+      }
       if (va < vb) return sortConfig.direction === 'asc' ? -1 : 1;
       if (va > vb) return sortConfig.direction === 'asc' ? 1 : -1;
       return 0;
@@ -314,9 +351,11 @@ export default function Usuarios() {
           <button className="u-btn u-btn-outline" onClick={handleExport}>
             <DownloadIcon /> Exportar CSV
           </button>
+          <BlockedAction>
           <button className="u-btn u-btn-primary" onClick={() => setIsModalOpen(true)}>
             <PlusIcon /> Nuevo Usuario
           </button>
+          </BlockedAction>
         </div>
       </div>
 
@@ -633,7 +672,7 @@ function Pagination({ total, currentPage, pageSize, totalPages, onPageChange, on
   return (
     <div className="u-pagination">
       <span className="u-page-info">
-        Mostrando {start}–{end} de {total} usuarios
+        Mostrando {start}–{end} de {total} órdenes
       </span>
       <div className="u-page-nums">
         <button
@@ -689,11 +728,15 @@ function NewUserModal({ onClose, onSave }) {
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [shake, setShake] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const firstRef = useRef(null);
 
   useEffect(() => {
+    setMounted(true);
     firstRef.current?.focus();
   }, []);
+
+  if (!mounted || !document.body) return null;
 
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email);
 
@@ -726,7 +769,7 @@ function NewUserModal({ onClose, onSave }) {
     }
   };
 
-  return (
+  return createPortal(
     <div className="u-modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()} role="dialog" aria-modal="true" aria-labelledby="modal-title">
       <div className={`u-modal ${shake ? 'shake' : ''}`}>
         <div className="u-modal__header">
@@ -822,14 +865,16 @@ function NewUserModal({ onClose, onSave }) {
 
           <div className="u-modal__footer">
             <button type="button" className="u-btn u-btn-outline" onClick={onClose}>Cancelar</button>
+            <BlockedAction>
             <button type="submit" className="u-btn u-btn-primary" disabled={saving}>
               {saving ? <><div className="u-spinner" /> Guardando...</> : 'Guardar Usuario'}
             </button>
+            </BlockedAction>
           </div>
         </form>
       </div>
     </div>
-  );
+  , document.body);
 }
 
 /* ── UserDrawer ────────────────────────────────────────── */
@@ -837,7 +882,7 @@ function NewUserModal({ onClose, onSave }) {
 function mapEstado(order_status) {
   switch (order_status) {
     case 'Entregada':   return 'Entregado';
-    case 'En progreso': return 'En proceso';
+    case 'En progreso': return 'En progreso';
     case 'Cancelada':   return 'Cancelado';
     default:            return order_status; // 'Pendiente' matches as-is
   }
@@ -847,16 +892,20 @@ function UserDrawer({ user, closing, onClose, onInactivate }) {
   const [progressReady, setProgressReady] = useState(false);
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
-  const color = avatarColor(user.nombre);
-  const pct = NIVEL_PCT[user.nivelFidelidad] || 100;
-  const nextLevel = user.nivelFidelidad < 4 ? user.nivelFidelidad + 1 : null;
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     const t = setTimeout(() => setProgressReady(true), 100);
     return () => clearTimeout(t);
   }, []);
 
+  const color = avatarColor(user?.nombre || '');
+  const pct = NIVEL_PCT[user?.nivelFidelidad] || 0;
+  const nextLevel = (user?.nivelFidelidad < 4) ? user.nivelFidelidad + 1 : null;
+
   useEffect(() => {
+    if (!user?.id) return;
     let cancelled = false;
     async function loadOrders() {
       setOrdersLoading(true);
@@ -871,9 +920,11 @@ function UserDrawer({ user, closing, onClose, onInactivate }) {
     }
     loadOrders();
     return () => { cancelled = true; };
-  }, [user.id]);
+  }, [user?.id]);
 
-  return (
+  if (!mounted || !document.body || !user) return null;
+
+  return createPortal(
     <>
       <div className="u-drawer-overlay" onClick={onClose} aria-hidden="true" />
       <div className={`u-drawer ${closing ? 'closing' : ''}`} role="dialog" aria-modal="true" aria-label={`Perfil de ${user.nombre}`}>
@@ -907,7 +958,7 @@ function UserDrawer({ user, closing, onClose, onInactivate }) {
             { label: '💰 Total Gastado', value: fmtCOP(user.totalGastado) },
             { label: '📦 Total Órdenes', value: user.ordenes },
             { label: '📅 Última Visita',  value: relTime(user.ultimaVisita) },
-            { label: '🗓️ Cliente desde', value: user.fechaRegistro.toLocaleDateString('es-CO', { month: 'short', year: 'numeric' }) },
+            { label: '🗓️ Cliente desde', value: (user.fechaRegistro instanceof Date && !isNaN(user.fechaRegistro)) ? user.fechaRegistro.toLocaleDateString('es-CO', { month: 'short', year: 'numeric' }) : '—' },
           ].map(kpi => (
             <div key={kpi.label} className="u-kpi-card">
               <div className="u-kpi-card__label">{kpi.label}</div>
@@ -989,13 +1040,15 @@ function UserDrawer({ user, closing, onClose, onInactivate }) {
           <button className="u-btn u-btn-outline" style={{ width: '100%', justifyContent: 'center' }}>
             Ver todas las órdenes
           </button>
+          <BlockedAction>
           <button className="u-btn u-btn-danger-ghost" style={{ width: '100%', justifyContent: 'center' }} onClick={onInactivate}>
             {user.estado === 'Activo' ? 'Inactivar cliente' : 'Activar cliente'}
           </button>
+          </BlockedAction>
         </div>
       </div>
     </>
-  );
+  , document.body);
 }
 
 /* ── BulkBar ───────────────────────────────────────────── */

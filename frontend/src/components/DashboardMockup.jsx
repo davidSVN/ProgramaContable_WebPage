@@ -3,7 +3,7 @@ import './DashboardMockup.css';
 
 const STATUSES = [
   { label: 'Recibida', color: '#6B6B6B', emoji: '📥' },
-  { label: 'En proceso', color: '#FF6B2B', emoji: '🔄' },
+  { label: 'En progreso', color: '#FF6B2B', emoji: '🔄' },
   { label: 'Lista', color: '#38A169', emoji: '✅' },
   { label: 'Entregada', color: '#1A1A1A', emoji: '🎉' },
 ];

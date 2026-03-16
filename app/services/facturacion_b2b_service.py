@@ -119,10 +119,13 @@ async def crear_orden_b2b(
     state_state: str,
 ) -> "OrdenDTO | str":
     """
-    Crea una orden B2B reutilizando la lógica de B2C (is_institute=True).
-    Si state_payment == 'Pagada', genera una ConsolidatedInvoice automática
-    y vincula la orden a ella.
+    Crea una orden B2B con identificación automática de servicios de agencia.
     """
+    from app.models import OrderDetail, SpentBusiness, Service
+    from app.services.facturacion_b2c_service import BOGOTA_TZ
+    from datetime import timedelta
+    from sqlalchemy.exc import IntegrityError
+
     stmt_u = select(LaundryUser).where(LaundryUser.user_id == user_id)
     if tenant_id is not None:
         stmt_u = stmt_u.where(LaundryUser.tenant_id == tenant_id)
@@ -132,41 +135,34 @@ async def crear_orden_b2b(
     if not usuario:
         return f"Institución ID {user_id} no encontrada en este tenant."
 
-    # Reutilizar el servicio B2C pasando is_institute=True.
-    # La función crear_orden del B2C acepta is_institute mediante monkey-patch
-    # ya que el servicio B2C no expone is_institute directamente. Creamos la
-    # orden directamente usando la misma lógica que el B2C para evitar acoplar
-    # los módulos con parámetros internos no expuestos.
-    # Implementamos aquí la creación con is_institute=True:
-    from app.models import OrderDetail, SpentBusiness
-    from app.services.facturacion_b2c_service import BOGOTA_TZ
-    from datetime import timedelta
-    from app.models import Service
-    from sqlalchemy.exc import IntegrityError
-
     try:
         nombre_usuario = usuario.user_name
 
-        # PASO 1: calcular spent_per_order por servicios de agencia
+        # PASO 1: identificar servicios de agencia automáticamente
         total_spent_per_order = 0.0
         servicios = [dict(s) for s in servicios_data]
 
         for s in servicios:
-            if s.get("is_agency"):
-                stmt_svc = select(Service).where(Service.service_id == s.get("id"))
-                if tenant_id is not None:
-                    stmt_svc = stmt_svc.where(Service.tenant_id == tenant_id)
+            svc_id = s.get("id")
+            svc_name = s.get("name")
+            
+            stmt_svc = select(Service).where(Service.tenant_id == tenant_id)
+            if svc_id:
+                stmt_svc = stmt_svc.where(Service.service_id == svc_id)
+            else:
+                stmt_svc = stmt_svc.where(Service.service_name == svc_name)
                 
-                res_svc = await db.execute(stmt_svc)
-                svc_obj = res_svc.scalars().first()
-                if svc_obj:
-                    cost = float(svc_obj.spent_per_service or 0) * s.get("qty", 1)
-                    s["spent_per_service"] = cost
-                    total_spent_per_order += cost
-                else:
-                    s["spent_per_service"] = 0.0
+            res_svc = await db.execute(stmt_svc)
+            svc_obj = res_svc.scalars().first()
+            
+            if svc_obj and (svc_obj.spent_per_service or 0) > 0:
+                cost = float(svc_obj.spent_per_service) * s.get("qty", 1)
+                s["spent_per_service"] = cost
+                s["is_agency"] = True
+                total_spent_per_order += cost
             else:
                 s["spent_per_service"] = 0.0
+                s["is_agency"] = False
 
         # PASO 2: calcular totales
         subtotal    = sum(s["value"] * s["qty"] for s in servicios)
@@ -178,11 +174,14 @@ async def crear_orden_b2b(
         else:
             restante = max(0.0, round(order_value - abono, 2))
 
+        now_bogota = datetime.now(BOGOTA_TZ).replace(tzinfo=None)
+
         # PASO 3: crear OrderHeader con is_institute=True
         orden = OrderHeader(
             tenant_id         = tenant_id,
             user_id           = user_id,
             user_name         = nombre_usuario,
+            date              = now_bogota,
             order_status      = state_state,
             is_paid           = (state_payment == "Pagada"),
             subtotal          = subtotal,
@@ -191,17 +190,16 @@ async def crear_orden_b2b(
             balance_due       = restante,
             items_description = items_description or None,
             spent_per_order   = total_spent_per_order,
+            agency_cost       = total_spent_per_order,
             net_income_value  = net_income,
             is_institute      = True,   # B2B siempre True
         )
         db.add(orden)
         await db.flush()  # obtener orden.id
 
-        now_bogota = datetime.now(BOGOTA_TZ)
-
         # PASO 4: crear OrderDetail por cada servicio
         for s in servicios:
-            agency_done = now_bogota + timedelta(days=7) if s.get("is_agency") else None
+            agency_done = (now_bogota + timedelta(days=7)).date() if s.get("is_agency") else None
             detalle = OrderDetail(
                 tenant_id        = tenant_id,
                 order_id         = orden.id,
@@ -214,6 +212,7 @@ async def crear_orden_b2b(
                 is_agency        = s.get("is_agency", False),
                 agency_done_date = agency_done,
                 spent_per_order  = s["spent_per_service"],
+                description      = s.get("description"),
             )
             db.add(detalle)
 
@@ -231,16 +230,22 @@ async def crear_orden_b2b(
             db.add(pago)
 
         # PASO 6: gasto de agencia automático
-        if total_spent_per_order > 0:
-            gasto_agencia = SpentBusiness(
-                tenant_id            = tenant_id,
-                spent_date           = now_bogota,
-                spent_category       = "Agencia",
-                spent_general_name   = f"Orden por agencia: {nombre_usuario}",
-                spent_payment_method = "Nequi",
-                spent_value          = total_spent_per_order,
-            )
-            db.add(gasto_agencia)
+        for s in servicios:
+            if s.get("is_agency"):
+                svc_name = s.get("name", "Servicio")
+                # Truncar nombre_usuario para evitar exceder 100 caracteres en spent_general_name
+                nombre_gasto = f"Orden #{orden.id} - {svc_name} (Agencia)"[:100]
+                
+                gasto_agencia = SpentBusiness(
+                    tenant_id            = tenant_id,
+                    spent_date           = now_bogota,
+                    spent_category       = "Agencia",
+                    spent_general_name   = nombre_gasto,
+                    spent_payment_method = "Nequi",
+                    spent_value          = s["spent_per_service"],
+                    description          = f"Costo automático para {svc_name} en orden #{orden.id} - Cliente: {nombre_usuario}"
+                )
+                db.add(gasto_agencia)
 
         # PASO 7 (B2B exclusivo): si Pagada → crear ConsolidatedInvoice automática
         if state_payment == "Pagada":
@@ -262,9 +267,10 @@ async def crear_orden_b2b(
         user_map    = {usuario.user_id: usuario.user_name}
         contact_map = {usuario.user_id: usuario.user_contact or "—"}
 
+        from sqlalchemy.orm import selectinload
         res_orden = await db.execute(
             select(OrderHeader)
-            .options(joinedload(OrderHeader.details), joinedload(OrderHeader.payments))
+            .options(selectinload(OrderHeader.details), selectinload(OrderHeader.payments))
             .where(OrderHeader.id == orden.id)
         )
         orden_full = res_orden.unique().scalars().first()
@@ -275,7 +281,9 @@ async def crear_orden_b2b(
         return f"Error de integridad al crear la orden B2B: {exc}"
     except Exception as exc:
         await db.rollback()
-        return f"Error inesperado al crear orden B2B: {exc}"
+        import traceback
+        error_details = traceback.format_exc()
+        return f"Error inesperado al crear orden B2B: {exc}\n{error_details}"
 
 
 async def listar_ordenes_b2b(
@@ -425,6 +433,8 @@ async def listar_facturas_consolidadas(
     tenant_id: int,
     user_id: Optional[int] = None,
     solo_pendientes: bool = False,
+    limit: int = 100,
+    offset: int = 0,
 ) -> list[FacturaConsolidadaDTO]:
     """
     Lista facturas consolidadas del tenant.
@@ -438,6 +448,8 @@ async def listar_facturas_consolidadas(
             joinedload(ConsolidatedInvoice.user),
         )
         .order_by(ConsolidatedInvoice.created_at.desc())
+        .limit(limit)
+        .offset(offset)
     )
     if tenant_id is not None:
         stmt = stmt.where(ConsolidatedInvoice.tenant_id == tenant_id)

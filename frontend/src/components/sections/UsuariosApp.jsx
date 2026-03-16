@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import './UsuariosApp.css';
+import { BlockedAction } from '../ui/BlockedAction';
 import {
   getAppUsers,
   getAppUsersStats,
@@ -243,7 +245,7 @@ function UserModal({ mode, user, currentUserId, onClose, onSuccess, addToast }) 
     }
   };
 
-  return (
+  return createPortal(
     <div
       className="ua-modal-overlay"
       ref={overlayRef}
@@ -378,6 +380,7 @@ function UserModal({ mode, user, currentUserId, onClose, onSuccess, addToast }) 
             <button type="button" className="ua-btn ua-btn--outline" onClick={onClose}>
               Cancelar
             </button>
+            <BlockedAction>
             <button
               type="submit"
               className="ua-btn ua-btn--primary"
@@ -385,11 +388,12 @@ function UserModal({ mode, user, currentUserId, onClose, onSuccess, addToast }) 
             >
               {submitting ? 'Guardando…' : isEdit ? 'Guardar cambios' : 'Crear Usuario'}
             </button>
+            </BlockedAction>
           </div>
         </form>
       </div>
     </div>
-  );
+  , document.body);
 }
 
 /* ── Main Component ─────────────────────────────────────────── */
@@ -596,6 +600,7 @@ export default function UsuariosApp({ user, onNavigate }) {
       {/* Action Bar */}
       <div className="ua-action-bar">
         <div title={newUserBlocked ? 'Límite de usuarios alcanzado. Actualiza tu plan.' : undefined}>
+          <BlockedAction>
           <button
             className="ua-btn ua-btn--primary"
             onClick={newUserBlocked ? undefined : () => setIsCreateModalOpen(true)}
@@ -604,6 +609,7 @@ export default function UsuariosApp({ user, onNavigate }) {
           >
             + Nuevo Usuario
           </button>
+          </BlockedAction>
         </div>
 
         <div className="ua-filters">
@@ -768,6 +774,7 @@ export default function UsuariosApp({ user, onNavigate }) {
                     ) : isDeleting ? (
                       <div className="ua-delete-confirm">
                         <span className="ua-delete-confirm__label">¿Eliminar?</span>
+                        <BlockedAction>
                         <button
                           className="ua-action-btn ua-action-btn--danger"
                           onClick={() => handleDelete(u.id)}
@@ -775,6 +782,7 @@ export default function UsuariosApp({ user, onNavigate }) {
                         >
                           Sí
                         </button>
+                        </BlockedAction>
                         <button
                           className="ua-action-btn ua-action-btn--cancel"
                           onClick={() => setDeletingId(null)}
@@ -785,6 +793,7 @@ export default function UsuariosApp({ user, onNavigate }) {
                       </div>
                     ) : (
                       <div className="ua-row-actions">
+                        <BlockedAction>
                         <button
                           className="ua-icon-btn"
                           onClick={() => { setEditingUser(u); setDeletingId(null); }}
@@ -793,6 +802,8 @@ export default function UsuariosApp({ user, onNavigate }) {
                         >
                           ✏️
                         </button>
+                        </BlockedAction>
+                        <BlockedAction>
                         <button
                           className="ua-icon-btn ua-icon-btn--danger"
                           onClick={() => { setDeletingId(u.id); setEditingUser(null); }}
@@ -801,6 +812,7 @@ export default function UsuariosApp({ user, onNavigate }) {
                         >
                           🗑️
                         </button>
+                        </BlockedAction>
                       </div>
                     )}
                   </td>

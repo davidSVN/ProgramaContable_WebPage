@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import './Servicios.css';
+import { BlockedAction } from '../ui/BlockedAction';
 import {
   getServicios,
   getServiciosStats,
@@ -349,6 +350,7 @@ export default function Servicios() {
 
       {/* ── Action bar ── */}
       <div className="sv-action-bar">
+        <BlockedAction>
         <button
           className="sv-btn sv-btn--primary"
           onClick={startAddNew}
@@ -356,6 +358,7 @@ export default function Servicios() {
         >
           + Nuevo Servicio
         </button>
+        </BlockedAction>
         <div className="sv-search-wrap">
           <span className="sv-search-icon">🔍</span>
           <input
@@ -594,12 +597,14 @@ export default function Servicios() {
                       {isEditing ? (
                         <div className="sv-edit-actions">
                           {editError && <div className="sv-row-error">{editError}</div>}
+                          <BlockedAction>
                           <button
                             className="sv-action-btn sv-action-btn--save"
                             onClick={() => saveEdit(service.service_id)}
                           >
                             ✅ Guardar
                           </button>
+                          </BlockedAction>
                           <button className="sv-action-btn sv-action-btn--cancel" onClick={cancelEdit}>
                             ✕ Cancelar
                           </button>
@@ -607,12 +612,14 @@ export default function Servicios() {
                       ) : isDeleting ? (
                         <div className="sv-delete-confirm">
                           <span className="sv-delete-confirm__label">¿Eliminar?</span>
+                          <BlockedAction>
                           <button
                             className="sv-action-btn sv-action-btn--danger"
                             onClick={() => confirmDelete(service.service_id)}
                           >
                             Sí
                           </button>
+                          </BlockedAction>
                           <button
                             className="sv-action-btn sv-action-btn--cancel"
                             onClick={() => setDeletingId(null)}

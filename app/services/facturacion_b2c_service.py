@@ -38,6 +38,8 @@ class ServicioDTO:
     service_name:  str
     service_value: float
     spent_per_service: float = 0.0
+    user_institute: str = "Usuario"
+    nombre_instituto: Optional[str] = None
 
     @classmethod
     def from_orm(cls, s) -> "ServicioDTO":
@@ -46,6 +48,8 @@ class ServicioDTO:
             service_name      = s.service_name,
             service_value     = float(s.service_value),
             spent_per_service = float(s.spent_per_service or 0),
+            user_institute    = s.user_institute,
+            nombre_instituto  = s.nombre_instituto,
         )
 
 
@@ -93,7 +97,8 @@ class OrdenDTO:
         if hasattr(o, "details") and o.details:
             if any(d.is_agency for d in o.details):
                 agency_str = "Agencia"
-                agency_done = next((d.agency_done_date for d in o.details if d.is_agency), None)
+                agency_done_raw = next((d.agency_done_date for d in o.details if d.is_agency), None)
+                agency_done = agency_done_raw.date() if isinstance(agency_done_raw, datetime) else agency_done_raw
             else:
                 agency_str = "Local"
 
@@ -167,11 +172,22 @@ def _aplicar_filtros_ordenes(stmt, tenant_id: int, filtros: FiltrosOrden):
 # Funciones del servicio
 # ──────────────────────────────────────────────────────────────────────────────
 
-async def listar_servicios_disponibles(db: AsyncSession, tenant_id: int) -> list[ServicioDTO]:
-    """Lista servicios B2C del tenant (excluye los exclusivos de institución)."""
-    stmt = select(Service).where(
-        Service.user_institute != "Institución",  # excluir B2B-only
-    )
+async def listar_servicios_disponibles(
+    db: AsyncSession, tenant_id: int, institucion: Optional[str] = None
+) -> list[ServicioDTO]:
+    """Lista servicios B2C del tenant o filtros por institución específica."""
+    if not institucion:
+        # Comportamiento original: solo B2C/Usuario (uso ilike para robustez)
+        stmt = select(Service).where(
+            Service.user_institute.ilike("usuario"),
+        )
+    else:
+        # Si hay institución: filtrar por instituto y nombre específico
+        stmt = select(Service).where(
+            Service.user_institute.ilike("instituto"),
+            Service.nombre_instituto.ilike(institucion),
+        )
+
     if tenant_id is not None:
         stmt = stmt.where(Service.tenant_id == tenant_id)
     
@@ -231,26 +247,38 @@ async def crear_orden(
 
         nombre_usuario = usuario.user_name
 
-        # ── PASO 1: calcular spent_per_order por servicios de agencia ──────────
+        # ── PASO 1: identificar servicios de agencia automáticamente ───────────
         total_spent_per_order = 0.0
-        servicios = [dict(s) for s in servicios_data]  # copia mutable
+        servicios = [dict(s) for s in servicios_data]
 
         for s in servicios:
-            if s.get("is_agency"):
-                stmt_svc = select(Service).where(Service.service_id == s.get("id"))
-                if tenant_id is not None:
-                    stmt_svc = stmt_svc.where(Service.tenant_id == tenant_id)
+            svc_id = s.get("id")
+            svc_name = s.get("name")
+            
+            stmt_svc = select(Service).where(Service.tenant_id == tenant_id)
+            if svc_id:
+                stmt_svc = stmt_svc.where(Service.service_id == svc_id)
+            else:
+                stmt_svc = stmt_svc.where(Service.service_name == svc_name)
                 
-                res_svc = await db.execute(stmt_svc)
-                svc_obj = res_svc.scalars().first()
-                if svc_obj:
-                    cost = float(svc_obj.spent_per_service or 0) * s.get("qty", 1)
-                    s["spent_per_service"] = cost
-                    total_spent_per_order += cost
-                else:
-                    s["spent_per_service"] = 0.0
+            res_svc = await db.execute(stmt_svc)
+            svc_obj = res_svc.scalars().first()
+            
+            if s.get("is_agency"):
+                # Si el frontend ya lo marcó como agencia, usamos el costo que mande (o 0 si no manda)
+                cost = float(s.get("spent_per_service", 0.0))
+                s["spent_per_service"] = cost
+                s["is_agency"] = True
+                total_spent_per_order += cost
+            elif svc_obj and (svc_obj.spent_per_service or 0) > 0:
+                # Si no viene marcado pero el maestro dice que tiene costo, lo marcamos
+                cost = float(svc_obj.spent_per_service) * s.get("qty", 1)
+                s["spent_per_service"] = cost
+                s["is_agency"] = True
+                total_spent_per_order += cost
             else:
                 s["spent_per_service"] = 0.0
+                s["is_agency"] = False
 
         # ── PASO 2: calcular totales ───────────────────────────────────────────
         subtotal      = sum(s["value"] * s["qty"] for s in servicios)
@@ -264,10 +292,13 @@ async def crear_orden(
             restante = max(0.0, round(order_value - abono_total, 2))
 
         # ── PASO 3: crear OrderHeader ──────────────────────────────────────────
+        now_bogota = datetime.now(BOGOTA_TZ).replace(tzinfo=None)
+        
         orden = OrderHeader(
             tenant_id         = tenant_id,
             user_id           = user_id,
             user_name         = nombre_usuario,
+            date              = now_bogota,
             order_status      = state_state,
             is_paid           = (state_payment == "Pagada"),
             subtotal          = subtotal,
@@ -276,17 +307,16 @@ async def crear_orden(
             balance_due       = restante,
             items_description = items_description or None,
             spent_per_order   = total_spent_per_order,
+            agency_cost       = total_spent_per_order,
             net_income_value  = net_income,
             is_institute      = False,   # B2C siempre False
         )
         db.add(orden)
         await db.flush()  # obtener orden.id
 
-        now_naive = datetime.now()
-
         # ── PASO 4: crear OrderDetail por cada servicio ────────────────────────
         for s in servicios:
-            agency_done = (now_naive + timedelta(days=7)).date() if s.get("is_agency") else None
+            agency_done = (now_bogota + timedelta(days=7)).date() if s.get("is_agency") else None
             detalle = OrderDetail(
                 tenant_id        = tenant_id,
                 order_id         = orden.id,
@@ -299,6 +329,7 @@ async def crear_orden(
                 is_agency        = s.get("is_agency", False),
                 agency_done_date = agency_done,
                 spent_per_order  = s["spent_per_service"],
+                description      = s.get("description"),
             )
             db.add(detalle)
 
@@ -328,16 +359,22 @@ async def crear_orden(
                     ))
 
         # ── PASO 6: gasto de agencia automático ───────────────────────────────
-        if total_spent_per_order > 0:
-            gasto_agencia = SpentBusiness(
-                tenant_id            = tenant_id,
-                spent_date           = now_naive,
-                spent_category       = "Agencia",
-                spent_general_name   = f"Orden por agencia: {nombre_usuario}",
-                spent_payment_method = "Nequi",
-                spent_value          = total_spent_per_order,
-            )
-            db.add(gasto_agencia)
+        for s in servicios:
+            if s.get("is_agency"):
+                svc_name = s.get("name", "Servicio")
+                # Truncar para evitar DataError en spent_general_name (max 100)
+                nombre_gasto = f"Orden #{orden.id} - {svc_name} (Agencia)"[:100]
+                
+                gasto_agencia = SpentBusiness(
+                    tenant_id            = tenant_id,
+                    spent_date           = now_bogota,
+                    spent_category       = "Agencia",
+                    spent_general_name   = nombre_gasto,
+                    spent_payment_method = "Nequi",
+                    spent_value          = s["spent_per_service"],
+                    description          = f"Costo automático para {svc_name} en orden #{orden.id} - Cliente: {nombre_usuario}"
+                )
+                db.add(gasto_agencia)
 
         await db.commit()
         await db.refresh(orden)
@@ -346,10 +383,11 @@ async def crear_orden(
         user_map    = {usuario.user_id: usuario.user_name}
         contact_map = {usuario.user_id: usuario.user_contact or "—"}
 
-        # Recargar con detalles y pagos para from_orm
+        # Recargar con selectinload para evitar Cartesian Product crash
+        from sqlalchemy.orm import selectinload
         res_orden = await db.execute(
             select(OrderHeader)
-            .options(joinedload(OrderHeader.details), joinedload(OrderHeader.payments))
+            .options(selectinload(OrderHeader.details), selectinload(OrderHeader.payments))
             .where(OrderHeader.id == orden.id)
         )
         orden_full = res_orden.unique().scalars().first()

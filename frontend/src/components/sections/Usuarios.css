@@ -680,7 +680,7 @@
   position: fixed;
   inset: 0;
   background: rgba(0,0,0,0.45);
-  z-index: 500;
+  z-index: var(--z-modal-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -950,7 +950,7 @@
   position: fixed;
   inset: 0;
   background: rgba(0,0,0,0.35);
-  z-index: 400;
+  z-index: var(--z-modal-overlay);
   animation: overlayFade 200ms ease;
 }
 
@@ -961,7 +961,7 @@
   height: 100vh;
   width: 420px;
   background: var(--ds-card-bg);
-  z-index: 401;
+  z-index: var(--z-drawer);
   display: flex;
   flex-direction: column;
   box-shadow: -8px 0 40px rgba(0,0,0,0.15);
@@ -1274,7 +1274,7 @@
   position: fixed;
   top: 20px;
   right: 20px;
-  z-index: 600;
+  z-index: var(--z-toast);
   display: flex;
   flex-direction: column;
   gap: 8px;

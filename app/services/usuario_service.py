@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Optional, List, Dict
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, and_, case
 from sqlalchemy.exc import IntegrityError
 
 from app.models import LaundryUser, OrderHeader, ConsolidatedInvoice
@@ -36,15 +36,17 @@ class UsuarioDTO:
     loyalty_level:     Optional[str]
     user_type:         str
     payment_condition: str
+    saldo_a_favor:     float = 0.0
     
     # Métricas
     total_orders:     int = 0
     total_spent:      float = 0.0
     last_visit:       Optional[datetime] = None
     pending_invoices: int = 0
+    ordenes_mes: int = 0
 
     @classmethod
-    def from_orm(cls, u, total_orders=0, total_spent=0.0, last_visit=None, pending_invoices=0) -> "UsuarioDTO":
+    def from_orm(cls, u, total_orders=0, total_spent=0.0, last_visit=None, pending_invoices=0, ordenes_mes=0) -> "UsuarioDTO":
         return cls(
             user_id           = u.user_id,
             user_name         = u.user_name,
@@ -56,10 +58,12 @@ class UsuarioDTO:
             loyalty_level     = u.loyalty_level,
             user_type         = u.user_type,
             payment_condition = u.payment_condition,
+            saldo_a_favor     = float(u.saldo_a_favor or 0.0),
             total_orders      = total_orders,
             total_spent       = total_spent or 0.0,
             last_visit        = last_visit,
-            pending_invoices  = pending_invoices
+            pending_invoices  = pending_invoices,
+            ordenes_mes       = ordenes_mes
         )
 
 
@@ -116,7 +120,14 @@ async def listar(
             func.count(OrderHeader.id).label("total_orders"),
             func.sum(OrderHeader.total_amount).label("total_spent"),
             func.max(OrderHeader.date).label("last_visit"),
-            func.coalesce(pending_sub.c.pending_count, 0).label("pending_invoices")
+            func.coalesce(pending_sub.c.pending_count, 0).label("pending_invoices"),
+            func.count(func.distinct(case(
+                (and_(
+                    func.extract('month', OrderHeader.date) == datetime.utcnow().month,
+                    func.extract('year', OrderHeader.date) == datetime.utcnow().year
+                ), OrderHeader.id),
+                else_=None
+            ))).label("ordenes_mes")
         )
         .outerjoin(OrderHeader, LaundryUser.user_id == OrderHeader.user_id)
         .outerjoin(pending_sub, LaundryUser.user_id == pending_sub.c.user_id)
@@ -146,7 +157,8 @@ async def listar(
             total_orders=row[1], 
             total_spent=row[2], 
             last_visit=row[3],
-            pending_invoices=row[4]
+            pending_invoices=row[4],
+            ordenes_mes=row[5]
         ) 
         for row in rows
     ]
@@ -174,6 +186,7 @@ async def buscar_por_nombre(
     db: AsyncSession,
     tenant_id: int,
     query: str,
+    user_type: Optional[str] = None,
     limit: int = 13,
 ) -> List[UsuarioDTO]:
     """Búsqueda rápida para dropdowns (ej: formulario de facturación).
@@ -182,6 +195,10 @@ async def buscar_por_nombre(
     stmt = select(LaundryUser)
     if tenant_id is not None:
         stmt = stmt.where(LaundryUser.tenant_id == tenant_id)
+    
+    if user_type:
+        stmt = stmt.where(LaundryUser.user_type == user_type)
+
     if query:
         stmt = stmt.where(
             LaundryUser.user_name.ilike(f"%{query}%") |
@@ -220,7 +237,14 @@ async def obtener(
             func.count(OrderHeader.id).label("total_orders"),
             func.sum(OrderHeader.total_amount).label("total_spent"),
             func.max(OrderHeader.date).label("last_visit"),
-            func.coalesce(pending_sub.c.pending_count, 0).label("pending_invoices")
+            func.coalesce(pending_sub.c.pending_count, 0).label("pending_invoices"),
+            func.count(func.distinct(case(
+                (and_(
+                    func.extract('month', OrderHeader.date) == datetime.utcnow().month,
+                    func.extract('year', OrderHeader.date) == datetime.utcnow().year
+                ), OrderHeader.id),
+                else_=None
+            ))).label("ordenes_mes")
         )
         .outerjoin(OrderHeader, LaundryUser.user_id == OrderHeader.user_id)
         .outerjoin(pending_sub, LaundryUser.user_id == pending_sub.c.user_id)
@@ -242,7 +266,8 @@ async def obtener(
         total_orders=row[1], 
         total_spent=row[2], 
         last_visit=row[3],
-        pending_invoices=row[4]
+        pending_invoices=row[4],
+        ordenes_mes=row[5]
     )
 
 

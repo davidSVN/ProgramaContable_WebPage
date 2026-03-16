@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
@@ -10,6 +12,8 @@ from app.schemas import (
     TenantResponse,
     TenantListItem,
     DashboardStats,
+    PlanUpdateRequest,
+    PlanResponse,
 )
 from app.services import tenant_service
 
@@ -65,6 +69,36 @@ async def obtener_tenant(
             detail=f"Tenant con id {tenant_id} no encontrado",
         )
     return TenantResponse.model_validate(tenant)
+
+
+@router.patch("/tenants/{tenant_id}/plan", response_model=PlanResponse)
+async def actualizar_plan_tenant(
+    tenant_id: int,
+    datos: PlanUpdateRequest,
+    current_user: AppUser = Depends(require_superadmin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Actualiza el plan de suscripción de un tenant específico."""
+    valid_plans = {"none", "basic", "premium"}
+    if datos.plan not in valid_plans:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Plan inválido. Valores permitidos: {', '.join(valid_plans)}",
+        )
+    tenant = await tenant_service.obtener_tenant(db, tenant_id)
+    if tenant is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Tenant con id {tenant_id} no encontrado",
+        )
+    tenant.plan = datos.plan
+    await db.commit()
+    await db.refresh(tenant)
+    return PlanResponse(
+        tenant_id=tenant.id,
+        plan=tenant.plan,
+        updated_at=datetime.utcnow(),
+    )
 
 
 @router.patch("/tenants/{tenant_id}/toggle-activo", response_model=TenantResponse)

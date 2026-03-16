@@ -105,10 +105,19 @@ async def create_app_user(
     current_user: AppUser = Depends(require_admin_or_above),
 ):
     """Crea un nuevo usuario de aplicación (staff)."""
-    tenant_id = current_user.tenant_id
+    tenant_id = datos.tenant_id if current_user.role == "superadmin" and datos.tenant_id is not None else current_user.tenant_id
+    
+    if tenant_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Se requiere un tenant_id para crear un usuario"
+        )
 
     # 1. Validar límite de usuarios
     tenant = await db.get(Tenant, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant no encontrado")
+
     stmt_count = select(func.count(AppUser.id)).where(AppUser.tenant_id == tenant_id)
     count_res = await db.execute(stmt_count)
     current_count = count_res.scalar()
@@ -162,7 +171,10 @@ async def update_app_user(
     """Actualiza un usuario de aplicación."""
     user = await db.get(AppUser, user_id)
 
-    if not user or user.tenant_id != current_user.tenant_id:
+    if current_user.role != "superadmin" and (not user or user.tenant_id != current_user.tenant_id):
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
     # Validaciones de seguridad
@@ -197,7 +209,10 @@ async def toggle_user_active(
     """Activa o desactiva un usuario."""
     user = await db.get(AppUser, user_id)
 
-    if not user or user.tenant_id != current_user.tenant_id:
+    if current_user.role != "superadmin" and (not user or user.tenant_id != current_user.tenant_id):
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
     if user.id == current_user.id:
@@ -217,7 +232,10 @@ async def delete_app_user(
     """Elimina un usuario de aplicación."""
     user = await db.get(AppUser, user_id)
 
-    if not user or user.tenant_id != current_user.tenant_id:
+    if current_user.role != "superadmin" and (not user or user.tenant_id != current_user.tenant_id):
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
     if user.id == current_user.id:
@@ -226,7 +244,7 @@ async def delete_app_user(
     # Verificar si es el último admin
     if user.role == "admin":
         stmt_admins = select(func.count(AppUser.id)).where(
-            AppUser.tenant_id == current_user.tenant_id, 
+            AppUser.tenant_id == user.tenant_id, 
             AppUser.role == "admin",
             AppUser.is_active == True
         )

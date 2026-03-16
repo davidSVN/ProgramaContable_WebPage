@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.dependencies import get_current_user, require_admin_or_above
 from app.models import AppUser, SpentBusiness
-from app.schemas import GastoCreate, GastoUpdate, GastoResponse, GastoCountResponse
+from app.schemas import GastoCreate, GastoUpdate, GastoResponse, GastoCountResponse, GastoStatsResponse, OrderDetailsStatsResponse, AgencySummaryRow
 from app.services import gastos_service
 from app.services.gastos_service import FiltrosGasto
 
@@ -18,12 +18,12 @@ router = APIRouter(tags=["Gastos"])
 def _dto_to_response(dto, tenant_id: int) -> GastoResponse:
     return GastoResponse(
         spent_id=dto.spent_id,
-        tenant_id=tenant_id,
+        tenant_id=tenant_id or getattr(dto, 'tenant_id', None),
         spent_category=dto.spent_category,
         spent_payment_method=dto.spent_payment_method,
         spent_value=dto.spent_value,
         spent_general_name=dto.spent_general_name,
-        description=None,
+        description=dto.description,
         spent_date=dto.spent_date,
     )
 
@@ -42,6 +42,132 @@ def _build_filtros(
         fecha_inicio=fecha_inicio,
         fecha_fin=fecha_fin,
     )
+
+
+@router.get("/stats", response_model=GastoStatsResponse)
+async def obtener_stats(
+    categoria: Optional[str] = Query(default=None),
+    forma_pago: Optional[str] = Query(default=None),
+    nombre_gasto: Optional[str] = Query(default=None),
+    fecha_inicio: Optional[date] = Query(default=None),
+    fecha_fin: Optional[date] = Query(default=None),
+    current_user: AppUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Obtiene estadísticas de gastos del tenant con filtros aplicados."""
+    # Filtro base por tenant
+    filtros = _build_filtros(categoria, forma_pago, nombre_gasto, fecha_inicio, fecha_fin)
+    stmt = select(SpentBusiness).where(SpentBusiness.tenant_id == current_user.tenant_id)
+    stmt = gastos_service._aplicar_filtros(stmt, filtros)
+
+    res = await db.execute(stmt)
+    gastos = res.scalars().all()
+
+    total_gastos = 0.0
+    total_manual = 0.0
+    total_agencia = 0.0
+    count_total = 0
+    count_manual = 0
+    count_agencia = 0
+    por_categoria = {}
+    
+    hoy = date.today()
+    gasto_mes_actual = 0.0
+
+    for g in gastos:
+        val = float(g.spent_value)
+        cat = g.spent_category or "Sin categoría"
+        
+        total_gastos += val
+        count_total += 1
+        
+        # Por categoría
+        por_categoria[cat] = por_categoria.get(cat, 0.0) + val
+        
+        # Agencia vs Manual
+        if cat == "Agencia":
+            total_agencia += val
+            count_agencia += 1
+        else:
+            total_manual += val
+            count_manual += 1
+            
+        # Mes actual
+        if g.spent_date.year == hoy.year and g.spent_date.month == hoy.month:
+            gasto_mes_actual += val
+
+    return GastoStatsResponse(
+        total_gastos=total_gastos,
+        total_manual=total_manual,
+        total_agencia=total_agencia,
+        gasto_mes_actual=gasto_mes_actual,
+        por_categoria=por_categoria,
+        count_total=count_total,
+        count_manual=count_manual,
+        count_agencia=count_agencia
+    )
+
+
+@router.get("/agencia/count", response_model=GastoCountResponse)
+async def contar_gastos_agencia(
+    nombre_gasto: Optional[str] = Query(default=None),
+    fecha_inicio: Optional[date] = Query(default=None),
+    fecha_fin: Optional[date] = Query(default=None),
+    current_user: AppUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Cuenta los detalles de servicios marcados como 'Agencia'."""
+    total = await gastos_service.contar_detalles_agencia(
+        db, current_user.tenant_id, nombre_gasto, fecha_inicio, fecha_fin
+    )
+    return {"total": total}
+@router.get("/agencia/stats", response_model=OrderDetailsStatsResponse)
+async def obtener_stats_agencia(
+    nombre_gasto: Optional[str] = Query(default=None),
+    fecha_inicio: Optional[date] = Query(default=None),
+    fecha_fin: Optional[date] = Query(default=None),
+    current_user: AppUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Obtiene conteo total y costo total de servicios de agencia."""
+    stats = await gastos_service.obtener_stats_agencia(
+        db, current_user.tenant_id, nombre_gasto, fecha_inicio, fecha_fin
+    )
+    return stats
+
+
+@router.get("/agencia/summary", response_model=List[AgencySummaryRow])
+async def obtener_resumen_agencia(
+    group_by: str = Query("mes"),
+    nombre_gasto: Optional[str] = Query(default=None),
+    fecha_inicio: Optional[date] = Query(default=None),
+    fecha_fin: Optional[date] = Query(default=None),
+    current_user: AppUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Obtiene resumen agrupado de servicios de agencia (día/semana/mes)."""
+    return await gastos_service.obtener_resumen_agencia(
+        db, current_user.tenant_id, group_by, nombre_gasto, fecha_inicio, fecha_fin
+    )
+
+
+from app.schemas import AgencyServiceDetailResponse
+
+@router.get("/agencia", response_model=List[AgencyServiceDetailResponse])
+async def listar_gastos_agencia(
+    nombre_gasto: Optional[str] = Query(default=None),
+    fecha_inicio: Optional[date] = Query(default=None),
+    fecha_fin: Optional[date] = Query(default=None),
+    limit: int = Query(25, ge=1),
+    offset: int = Query(0, ge=0),
+    current_user: AppUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lista los detalles de servicios marcados como 'Agencia'."""
+    dtos = await gastos_service.listar_detalles_agencia(
+        db, current_user.tenant_id, nombre_gasto, fecha_inicio, fecha_fin, limit=limit, offset=offset
+    )
+    return dtos
 
 
 @router.get("/count", response_model=GastoCountResponse)
@@ -93,6 +219,7 @@ async def registrar_gasto(
         monto=datos.spent_value,
         descripcion_nombre=datos.spent_general_name,
         fecha=datos.spent_date,
+        descripcion=datos.description,
     )
     if isinstance(resultado, str):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=resultado)

@@ -9,8 +9,9 @@ import NuevaOrden from '../sections/NuevaOrden';
 import B2BOrdenes from '../sections/ordenes/B2BOrdenes';
 import HistorialOrdenes from '../sections/ordenes/HistorialOrdenes';
 import GastosNegocio from '../sections/ordenes/GastosNegocio';
-import FacturasCobrar from '../sections/ordenes/FacturasCobrar';
-import ServiciosTerceros from '../sections/ordenes/ServiciosTerceros';
+import OrdenesPorCobrar from '../sections/ordenes/OrdenesPorCobrar';
+import ServiciosAgencia from '../sections/ordenes/ServiciosAgencia';
+import ServiciosPorOrdenes from '../sections/ordenes/ServiciosPorOrdenes';
 import Usuarios from '../sections/Usuarios';
 import Instituciones from '../sections/Instituciones';
 import Servicios from '../sections/Servicios';
@@ -22,10 +23,11 @@ const SECTIONS = {
   'ia-reportes': IAReportes,
   'nueva-orden': NuevaOrden,
   'b2b-ordenes': B2BOrdenes,
-  'historial-ordenes': HistorialOrdenes,
-  'gastos-negocio': GastosNegocio,
-  'facturas-cobrar': FacturasCobrar,
-  'servicios-terceros': ServiciosTerceros,
+  'historial-ordenes':  HistorialOrdenes,
+  'servicios-ordenes':  ServiciosPorOrdenes,
+  'gastos-negocio':     GastosNegocio,
+  'facturas-cobrar': OrdenesPorCobrar,
+  'servicios-terceros': ServiciosAgencia,
   'usuarios': Usuarios,
   'instituciones': Instituciones,
   'servicios': Servicios,
@@ -39,6 +41,9 @@ export default function AppShell({ user }) {
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem('washflow_sidebar') === 'collapsed'; } catch { return false; }
   });
+
+  const plan = localStorage.getItem('washflow_plan') ?? 'none';
+  const showSubBanner = plan === 'none' && user?.role !== 'superadmin';
 
   const handleCollapse = (next) => {
     setCollapsed(next);
@@ -57,7 +62,7 @@ export default function AppShell({ user }) {
         onCollapse={handleCollapse}
       />
 
-      <div className={`main-content ${collapsed ? 'collapsed' : ''}`}>
+      <div className={`main-content ${collapsed ? 'collapsed' : ''} ${showSubBanner ? 'sub-banner-visible' : ''}`}>
         <Topbar
           activeSection={activeSection}
           user={user}

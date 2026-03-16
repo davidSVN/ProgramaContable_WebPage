@@ -3,7 +3,11 @@ const TOKEN_KEY = 'washflow_token';
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
 export const setToken = (t) => localStorage.setItem(TOKEN_KEY, t);
-export const clearToken = () => localStorage.removeItem(TOKEN_KEY);
+export const clearToken = () => {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem('washflow_plan');
+  localStorage.removeItem('washflow_role');
+};
 
 export async function login(email, password) {
   const res = await fetch(`${API}/api/auth/login`, {
@@ -17,6 +21,8 @@ export async function login(email, password) {
   }
   const data = await res.json();
   setToken(data.access_token);
+  localStorage.setItem('washflow_plan', data.plan ?? 'none');
+  localStorage.setItem('washflow_role', data.role ?? '');
   return data;
 }
 
@@ -32,6 +38,8 @@ export async function register(name, email, password) {
   }
   const data = await res.json();
   setToken(data.access_token);
+  localStorage.setItem('washflow_plan', data.plan ?? 'none');
+  localStorage.setItem('washflow_role', data.role ?? '');
   return data;
 }
 

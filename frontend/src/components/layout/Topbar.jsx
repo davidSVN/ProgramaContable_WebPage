@@ -9,7 +9,7 @@ const SECTION_LABELS = {
   'historial-ordenes': 'Historial de Órdenes',
   'gastos-negocio': 'Gastos del Negocio',
   'facturas-cobrar': 'Facturas por Cobrar',
-  'servicios-terceros': 'Servicios a Terceros',
+  'servicios-terceros': 'Servicios en Agencia',
   'usuarios': 'Usuarios',
   'instituciones': 'Instituciones',
   'servicios': 'Servicios',
@@ -17,6 +17,19 @@ const SECTION_LABELS = {
   'usuarios-app': 'Usuarios App',
   'configuracion': 'Configuración',
 };
+
+function NoBannerSuscripcion({ onNavigate }) {
+  const plan = localStorage.getItem('washflow_plan') ?? 'none';
+  if (plan !== 'none') return null;
+  return (
+    <div className="topbar-sub-banner">
+      <span>🔒 Sin suscripción activa — Las funciones están bloqueadas</span>
+      <button className="topbar-sub-banner__btn" onClick={() => onNavigate('configuracion')}>
+        Activar plan →
+      </button>
+    </div>
+  );
+}
 
 export default function Topbar({ activeSection, user, onNavigate }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -47,6 +60,8 @@ export default function Topbar({ activeSection, user, onNavigate }) {
   };
 
   return (
+    <>
+    <NoBannerSuscripcion onNavigate={onNavigate} />
     <header className="topbar" role="banner">
       {/* Mobile hamburger */}
       <button
@@ -127,6 +142,7 @@ export default function Topbar({ activeSection, user, onNavigate }) {
         </div>
       </div>
     </header>
+    </>
   );
 }
 

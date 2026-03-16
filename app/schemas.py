@@ -10,6 +10,12 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class RegisterRequest(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -17,6 +23,7 @@ class TokenResponse(BaseModel):
     role: str
     tenant_id: Optional[int] = None
     username: str
+    plan: str = "none"
 
 
 class UserMe(BaseModel):
@@ -26,6 +33,7 @@ class UserMe(BaseModel):
     role: str
     tenant_id: Optional[int] = None
     is_active: bool
+    plan: str = "none"
 
     model_config = {"from_attributes": True}
 
@@ -35,7 +43,7 @@ class UserMe(BaseModel):
 class TenantCreate(BaseModel):
     nombre: str
     ciudad: Optional[str] = None
-    plan: str = "basic"
+    plan: str = "none"
     email_admin: EmailStr
     username_admin: str
     password_admin: str
@@ -97,7 +105,7 @@ class GastoUpdate(BaseModel):
 
 class GastoResponse(BaseModel):
     spent_id: int
-    tenant_id: int
+    tenant_id: Optional[int] = None
     spent_category: Optional[str] = None
     spent_payment_method: str
     spent_value: float
@@ -108,8 +116,34 @@ class GastoResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class AgencyServiceDetailResponse(BaseModel):
+    id: int
+    order_id: int
+    date: datetime
+    customer_name: str
+    service_name: str
+    quantity: float
+    unit_price: float
+    total_item_price: float
+    agency_cost: float
+    description: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
 class GastoCountResponse(BaseModel):
     total: int
+
+
+class GastoStatsResponse(BaseModel):
+    total_gastos: float           # sum of all spent_value for tenant
+    total_manual: float           # sum where spent_category != 'Agencia'
+    total_agencia: float          # sum where spent_category = 'Agencia'
+    gasto_mes_actual: float       # sum of current month
+    por_categoria: dict           # {"Nómina": 500000, "Arriendo": 800000, ...}
+    count_total: int
+    count_manual: int
+    count_agencia: int
 
 
 # ─── Proveedores ──────────────────────────────────────────────────────────────
@@ -215,12 +249,14 @@ class UsuarioResponse(BaseModel):
     loyalty_level: Optional[str] = None
     user_type: str
     payment_condition: str
+    saldo_a_favor: float = 0.0
     
     # Métricas calculadas
     total_orders: int = 0
     total_spent: float = 0.0
     last_visit: Optional[datetime] = None
     pending_invoices: int = 0
+    ordenes_mes: int = 0
 
     model_config = {"from_attributes": True}
 
@@ -235,11 +271,12 @@ from pydantic import ConfigDict
 from typing import List as _List
 
 class ItemOrdenCreate(BaseModel):
-    id: int                          # service_id
+    id: Optional[int] = None         # service_id
     name: str
-    qty: int = Field(ge=1)
+    qty: float = Field(ge=0)
     value: float = Field(gt=0)
     is_agency: bool = False
+    description: Optional[str] = None
 
 
 class AbonoInicial(BaseModel):
@@ -302,6 +339,40 @@ class DetalleOrdenResponse(BaseModel):
     qty: float
     value: float
     is_agency: bool
+    description: Optional[str] = None
+    spent_per_service: Optional[float] = 0.0
+
+
+class OrderDetailFlatResponse(BaseModel):
+    id: int
+    order_id: int
+    user_name: Optional[str] = None
+    service_name: str
+    quantity: float
+    unit_price: float
+    total_item_price: float
+    is_agency: bool
+    agency_done_date: Optional[datetime] = None
+    spent_per_order: float = 0.0
+    date: datetime
+    order_status: str
+    description: Optional[str] = None
+
+class OrderDetailsStatsResponse(BaseModel):
+    total_count: int
+    total_value: float = 0.0
+    total_cost: float = 0.0
+    total_orders_count: int = 0
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AgencySummaryRow(BaseModel):
+    periodo: str
+    count: int
+    facturado: float
+    costo: float
+    sort_date: datetime
 
 
 class ClienteSearchResponse(BaseModel):
@@ -385,6 +456,19 @@ class OrderHistorialItem(BaseModel):
     consolidated_invoice_id: Optional[int] = None
     user_id: int
     user_name: str
+    user_contact: Optional[str] = None
+    days_passed: int = 0
+    agency_cost: float = 0.0
+    spent_per_order: float = 0.0
+    total_paid: float = 0.0
+    net_income_value: float = 0.0
+    
+    # Delivery info
+    delivered_at: Optional[datetime] = None
+    delivered_by: Optional[str] = None
+    received_by_name: Optional[str] = None
+    invoice_delivered: Optional[bool] = None
+    has_signature: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -402,6 +486,34 @@ class OrderStatsResponse(BaseModel):
     total_recaudado: float
     ordenes_debe: int
     monto_por_cobrar: float
+    total_gastos_agencia: float = 0.0
+    utilidad_neta: float = 0.0
+
+
+# ─── Tracking de entrega ──────────────────────────────────────────────────────
+
+class EntregarOrdenRequest(BaseModel):
+    received_by_name: Optional[str] = None
+    received_by_cedula: Optional[str] = None
+    invoice_delivered: bool
+    delivery_signature: Optional[str] = None
+    metodo_pago: Optional[str] = None
+    order_status: Optional[str] = "Entregada"
+    estado_pago: Optional[str] = None
+
+class EntregarOrdenResponse(BaseModel):
+    order_id: int
+    order_status: str           # will be "Entregada"
+    is_paid: bool
+    balance_due: float
+    delivered_at: datetime
+    delivered_by: str
+    received_by_name: str
+    received_by_cedula: str
+    invoice_delivered: bool
+    has_signature: bool         # True if delivery_signature is not null
+    
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ─── App Users Management ─────────────────────────────────────────────────────
@@ -412,6 +524,7 @@ class AppUserCreate(BaseModel):
     password: str
     role: str  # "admin" | "empleado"
     cedula: Optional[str] = None
+    tenant_id: Optional[int] = None
 
 class AppUserUpdate(BaseModel):
     username: Optional[str] = None
@@ -444,3 +557,35 @@ class AppUsersStatsResponse(BaseModel):
     slots_disponibles: int   # max_usuarios - total_usuarios
 
 
+# ─── Settings / Abreviaciones ────────────────────────────────────────────────
+
+class AbreviacionesResponse(BaseModel):
+    abreviaciones: Dict[str, str]
+
+class AbreviacionesUpdate(BaseModel):
+    abreviaciones: Dict[str, str]
+
+class AbreviacionesSaveResponse(BaseModel):
+    abreviaciones: Dict[str, str]
+    total: int
+
+
+# ─── Suscripción ──────────────────────────────────────────────────────────────
+
+class PlanUpdateRequest(BaseModel):
+    plan: str  # "none" | "basic" | "premium"
+
+
+class PlanResponse(BaseModel):
+    tenant_id: int
+    plan: str
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SuscripcionInfo(BaseModel):
+    plan_actual: str        # "none" | "basic" | "premium"
+    puede_usar_app: bool    # False if plan == "none"
+    es_premium: bool        # True only if plan == "premium"
+    features: Dict[str, bool]

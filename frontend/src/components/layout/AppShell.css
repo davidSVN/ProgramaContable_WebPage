@@ -54,7 +54,7 @@
   background: var(--ds-sidebar-bg);
   display: flex;
   flex-direction: column;
-  z-index: 200;
+  z-index: var(--z-sidebar);
   transition: width var(--ds-sidebar-transition);
   overflow: hidden;
 }
@@ -319,7 +319,7 @@
   pointer-events: none;
   opacity: 0;
   transition: opacity var(--ds-transition);
-  z-index: 300;
+  z-index: var(--z-dropdown);
   box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }
 
@@ -390,6 +390,69 @@
   white-space: nowrap;
 }
 
+/* Plan badge */
+.sidebar-plan-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--dot-color, #9B9790);
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.sidebar-plan-dot--solo {
+  display: block;
+  margin: 8px auto;
+}
+
+.sidebar-plan-badge {
+  padding: 10px 14px;
+  border-top: 1px solid var(--ds-sidebar-border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sidebar-plan-badge__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar-plan-badge__label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ds-sidebar-text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  transition: opacity var(--ds-transition);
+}
+
+.sidebar.collapsed .sidebar-plan-badge__label {
+  opacity: 0;
+}
+
+.sidebar-plan-badge__upgrade {
+  background: none;
+  border: none;
+  font-size: 0.7rem;
+  font-family: var(--ds-font-body, 'DM Sans', sans-serif);
+  color: var(--ds-accent, #FF6B2B);
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+  transition: opacity 120ms;
+}
+
+.sidebar.collapsed .sidebar-plan-badge__upgrade {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sidebar-plan-badge__upgrade:hover {
+  text-decoration: underline;
+}
+
 /* Collapse toggle */
 .sidebar-collapse-btn {
   position: absolute;
@@ -406,7 +469,7 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  z-index: 210;
+  z-index: calc(var(--z-sidebar) + 10);
   transition: background var(--ds-transition), box-shadow var(--ds-transition);
   color: var(--ds-text-secondary);
 }
@@ -432,6 +495,55 @@
   margin-left: var(--ds-sidebar-collapsed);
 }
 
+/* ─── Subscription banner ────────────────────────────── */
+.topbar-sub-banner {
+  position: fixed;
+  top: 0;
+  left: var(--ds-sidebar-width);
+  right: 0;
+  height: 40px;
+  z-index: calc(var(--z-topbar) + 1);
+  background: #FFEBEE;
+  color: #C62828;
+  font-family: var(--ds-font-body, 'DM Sans', sans-serif);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  transition: left var(--ds-sidebar-transition);
+}
+
+.main-content.collapsed .topbar-sub-banner {
+  left: var(--ds-sidebar-collapsed);
+}
+
+.topbar-sub-banner__btn {
+  background: #FF6B2B;
+  color: #fff;
+  border: none;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-family: var(--ds-font-body, 'DM Sans', sans-serif);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 150ms;
+}
+
+.topbar-sub-banner__btn:hover {
+  background: #E55A1E;
+}
+
+.main-content.sub-banner-visible .topbar {
+  top: 40px;
+}
+
+.main-content.sub-banner-visible .content-area {
+  padding-top: calc(var(--ds-topbar-height) + 40px);
+}
+
 /* ─── Topbar ──────────────────────────────────────────── */
 .topbar {
   height: var(--ds-topbar-height);
@@ -441,10 +553,17 @@
   align-items: center;
   padding: 0 24px;
   gap: 16px;
-  flex-shrink: 0;
-  position: relative;
-  z-index: 100;
-  box-shadow: 0 1px 0 var(--ds-topbar-border);
+  position: fixed;
+  top: 0;
+  left: var(--ds-sidebar-width);
+  right: 0;
+  z-index: var(--z-topbar);
+  box-shadow: 0 1px 8px rgba(0,0,0,0.06);
+  transition: left var(--ds-sidebar-transition);
+}
+
+.main-content.collapsed .topbar {
+  left: var(--ds-sidebar-collapsed);
 }
 
 .topbar__title {
@@ -597,7 +716,7 @@
   box-shadow: 0 8px 24px rgba(0,0,0,0.12);
   min-width: 180px;
   overflow: hidden;
-  z-index: 300;
+  z-index: var(--z-dropdown);
   animation: dropdownIn 150ms ease forwards;
 }
 
@@ -640,11 +759,11 @@
   margin: 4px 0;
 }
 
-/* ─── Content Area ────────────────────────────────────── */
 .content-area {
   flex: 1;
   overflow-y: auto;
   background: var(--ds-content-bg);
+  padding-top: var(--ds-topbar-height);
 }
 
 .content-area::-webkit-scrollbar { width: 6px; }
@@ -716,7 +835,7 @@
   position: fixed;
   inset: 0;
   background: rgba(0,0,0,0.5);
-  z-index: 190;
+  z-index: calc(var(--z-sidebar) - 5);
 }
 
 /* ─── Mobile Hamburger ────────────────────────────────── */
@@ -754,6 +873,10 @@
 
   .main-content {
     margin-left: 0 !important;
+  }
+
+  .topbar {
+    left: 0 !important;
   }
 
   .mobile-menu-btn {

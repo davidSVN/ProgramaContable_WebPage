@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { getHistorialOrdenes, getOrdenesStats, deleteOrden, updateOrdenEstado } from '../../../services/ordenes';
+import { createPortal } from 'react-dom';
+import { getHistorialOrdenes, getOrdenesStats, deleteOrden, updateOrdenEstado, entregarOrden } from '../../../services/ordenes';
 import './HistorialOrdenes.css';
 
 // ── Formatters ────────────────────────────────────────────────────────────────
@@ -14,6 +15,20 @@ const fmtDate = (raw) => {
   return `${d.getDate()} ${MESES[d.getMonth()]} ${d.getFullYear()}`;
 };
 
+const fmtDateTime = (raw) => {
+  if (!raw) return '—';
+  const d = new Date(raw);
+  if (isNaN(d)) return '—';
+  return `${d.getDate()} ${MESES[d.getMonth()]} ${d.getFullYear()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;
+};
+
+const truncate = (str, max) => {
+  if (!str) return null;
+  return str.length > max ? str.slice(0, max) + '…' : str;
+};
+
+const ACTIVE_STATUSES = ['Recibida', 'En progreso', 'Lista para entregar'];
+
 // ── Badge helpers ─────────────────────────────────────────────────────────────
 const PAGO_CFG = {
   'Pagada':         { cls: 'ho-badge--green',  label: 'Pagada' },
@@ -23,7 +38,7 @@ const PAGO_CFG = {
 };
 const ORDEN_CFG = {
   'Recibida':              { cls: 'ho-badge--gray',   label: 'Recibida' },
-  'En proceso':            { cls: 'ho-badge--blue',   label: 'En proceso' },
+  'En progreso':            { cls: 'ho-badge--blue',   label: 'En progreso' },
   'Lista para entregar':   { cls: 'ho-badge--purple', label: 'Lista' },
   'Entregada':             { cls: 'ho-badge--green',  label: 'Entregada' },
   'Cancelada':             { cls: 'ho-badge--red',    label: 'Cancelada' },
@@ -38,7 +53,7 @@ function Badge({ value, cfg }) {
 function SkeletonRows() {
   return Array.from({ length: 6 }).map((_, i) => (
     <tr key={i} className="ho-skel-row">
-      {Array.from({ length: 11 }).map((__, j) => (
+      {Array.from({ length: 16 }).map((__, j) => (
         <td key={j}><span className="ho-skel" style={{ width: `${50 + ((i * 3 + j * 7) % 40)}%` }} /></td>
       ))}
     </tr>
@@ -46,7 +61,7 @@ function SkeletonRows() {
 }
 
 // ── Stat card with count-up ───────────────────────────────────────────────────
-function StatCard({ icon, label, value, formatted, accentClass, loading }) {
+function StatCard({ icon, label, value, formatted, accentClass, loading, onClick, link }) {
   const [display, setDisplay] = useState(0);
   const animRef = useRef(null);
 
@@ -67,7 +82,13 @@ function StatCard({ icon, label, value, formatted, accentClass, loading }) {
   }, [value, loading]);
 
   return (
-    <div className={`ho-stat-card ${accentClass || ''}`}>
+    <div
+      className={`ho-stat-card ${accentClass || ''}${onClick ? ' ho-stat-card--clickable' : ''}`}
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') onClick(); } : undefined}
+    >
       <span className="ho-stat-icon">{icon}</span>
       <div className="ho-stat-body">
         <span className="ho-stat-label">{label}</span>
@@ -77,20 +98,98 @@ function StatCard({ icon, label, value, formatted, accentClass, loading }) {
               {formatted ? fmtCOP(display) : display.toLocaleString('es-CO')}
             </span>
         }
+        {link && !loading && (
+          <span className="ho-stat-link">{link} →</span>
+        )}
       </div>
     </div>
   );
 }
 
+// ── Signature Canvas ──────────────────────────────────────────────────────────
+function SignatureCanvas({ canvasRef }) {
+  const isDrawingRef = useRef(false);
+  const lastPosRef   = useRef({ x: 0, y: 0 });
+
+  const getPos = (e, canvas) => {
+    const rect = canvas.getBoundingClientRect();
+    const src  = e.touches ? e.touches[0] : e;
+    return { x: src.clientX - rect.left, y: src.clientY - rect.top };
+  };
+
+  const startDraw = (e) => {
+    e.preventDefault();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    isDrawingRef.current = true;
+    lastPosRef.current = getPos(e, canvas);
+  };
+
+  const draw = (e) => {
+    e.preventDefault();
+    if (!isDrawingRef.current) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const pos = getPos(e, canvas);
+    ctx.beginPath();
+    ctx.moveTo(lastPosRef.current.x, lastPosRef.current.y);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.strokeStyle = '#1A1A1A';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+    lastPosRef.current = pos;
+  };
+
+  const endDraw = (e) => {
+    e.preventDefault();
+    isDrawingRef.current = false;
+  };
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  };
+
+  return (
+    <div className="ho-canvas-wrap">
+      <canvas
+        ref={canvasRef}
+        className="ho-canvas"
+        width={600}
+        height={150}
+        onMouseDown={startDraw}
+        onMouseMove={draw}
+        onMouseUp={endDraw}
+        onMouseLeave={endDraw}
+        onTouchStart={startDraw}
+        onTouchMove={draw}
+        onTouchEnd={endDraw}
+        style={{ touchAction: 'none' }}
+        aria-label="Canvas para firma del cliente"
+      />
+      <div className="ho-canvas-placeholder">toca aquí para firmar</div>
+      <button type="button" className="ho-btn ho-btn--ghost ho-btn--sm ho-canvas-clear" onClick={clearCanvas}>
+        Limpiar firma
+      </button>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
-export default function HistorialOrdenes() {
+export default function HistorialOrdenes({ user, onNavigate }) {
   const [orders, setOrders]       = useState([]);
   const [stats, setStats]         = useState(null);
   const [loading, setLoading]     = useState(true);
   const [statsLoading, setStatsLoading] = useState(true);
   const [error, setError]         = useState(null);
+  const [uniqueStatuses, setUniqueStatuses] = useState([]);
   const [filters, setFilters]     = useState({
-    estado_pago: '', estado_orden: '', cliente: '', desde: '', hasta: ''
+    estado_pago: '', estado_orden: '', cliente: '', desde: '', hasta: '', is_institute: ''
   });
   const [pagination, setPagination] = useState({ page: 1, limit: 15, total: 0, total_pages: 0 });
   const [sortConfig, setSortConfig] = useState({ field: 'id', direction: 'desc' });
@@ -102,9 +201,46 @@ export default function HistorialOrdenes() {
   const [editSaving, setEditSaving] = useState(false);
   const [toast, setToast]           = useState(null);
 
-  const debounceRef = useRef(null);
-  const tableRef    = useRef(null);
-  const pendingClienteRef = useRef('');
+  // ── Delivery modal state ───────────────────────────────────────────────────
+  const [isEntregarOpen, setIsEntregarOpen]               = useState(false);
+  const [deliverySearch, setDeliverySearch]               = useState('');
+  const [deliveryResults, setDeliveryResults]             = useState([]);
+  const [deliverySearching, setDeliverySearching]         = useState(false);
+  const [deliveryResultsVisible, setDeliveryResultsVisible] = useState(false);
+  const [selectedDeliveryOrder, setSelectedDeliveryOrder] = useState(null);
+  const [highlightedDeliveryIdx, setHighlightedDeliveryIdx] = useState(0);
+  const [receivedByName, setReceivedByName]               = useState('');
+  const [receivedByCedula, setReceivedByCedula]           = useState('');
+  const [invoiceDelivered, setInvoiceDelivered]           = useState(false);
+  const [isDelivering, setIsDelivering]                   = useState(false);
+  const [deliveryError, setDeliveryError]                 = useState(null);
+  const [deliverySuccess, setDeliverySuccess]             = useState(false);
+  const [deliveryMetodoPago, setDeliveryMetodoPago]       = useState('Efectivo');
+  const [deliveryEstadoOrden, setDeliveryEstadoOrden]     = useState('Entregada');
+  const [deliveryEstadoPago, setDeliveryEstadoPago]       = useState('Pagada');
+  const isTablet = typeof window !== 'undefined' && window.innerWidth <= 1024;
+
+  const debounceRef         = useRef(null);
+  const tableRef            = useRef(null);
+  const pendingClienteRef   = useRef('');
+  const deliveryDebounceRef = useRef(null);
+  const deliverySearchRef   = useRef(null);
+  const canvasRef           = useRef(null);
+  const modalBodyRef        = useRef(null);
+
+  // ── Sync receiver info when invoice is delivered ──────────────────────────
+  useEffect(() => {
+    if (invoiceDelivered && selectedDeliveryOrder) {
+      setReceivedByName(selectedDeliveryOrder.user_name || '');
+      setReceivedByCedula(String(selectedDeliveryOrder.user_id || ''));
+    } else if (!invoiceDelivered && selectedDeliveryOrder) {
+      // If user toggles back to "No", we might want to clear it or let them edit.
+      // The user says "si esta puesto en no si sera obligatorio poner la informacion".
+      // Let's clear to force input if it was mirrored before.
+      setReceivedByName('');
+      setReceivedByCedula('');
+    }
+  }, [invoiceDelivered, selectedDeliveryOrder]);
 
   // ── Fetch orders ────────────────────────────────────────────────────────────
   const fetchOrders = useCallback(async (overrides = {}) => {
@@ -122,6 +258,7 @@ export default function HistorialOrdenes() {
     if (merged.cliente)      params.cliente      = merged.cliente;
     if (merged.desde)        params.desde        = merged.desde;
     if (merged.hasta)        params.hasta        = merged.hasta;
+    if (merged.is_institute !== '') params.is_institute = merged.is_institute;
     if (sf)  params.sort_field     = sf;
     if (sd)  params.sort_direction = sd;
 
@@ -142,24 +279,57 @@ export default function HistorialOrdenes() {
     }
   }, [filters, pagination.page, pagination.limit, sortConfig]);
 
-  const fetchStats = useCallback(async () => {
+  const fetchStats = useCallback(async (overrides = {}) => {
     setStatsLoading(true);
+    const merged = { ...filters, ...overrides };
+    const params = {};
+    if (merged.estado_pago)  params.estado_pago  = merged.estado_pago;
+    if (merged.estado_orden) params.estado_orden = merged.estado_orden;
+    if (merged.cliente)      params.cliente      = merged.cliente;
+    if (merged.desde)        params.desde        = merged.desde;
+    if (merged.hasta)        params.hasta        = merged.hasta;
+    if (merged.is_institute !== '') params.is_institute = merged.is_institute;
+    
     try {
-      const s = await getOrdenesStats();
+      const s = await getOrdenesStats(params);
       setStats(s);
     } catch { /* stats are non-critical */ }
     finally { setStatsLoading(false); }
-  }, []);
+  }, [filters]);
 
   // ── Initial load ────────────────────────────────────────────────────────────
   useEffect(() => {
     fetchStats();
     fetchOrders({ page: 1 });
+    
+    // Fetch unique statuses for the filter dropdown
+    import('../../../services/ordenes').then(m => {
+      if (m.getHistorialStatuses) {
+        m.getHistorialStatuses().then(setUniqueStatuses).catch(() => {});
+      }
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── ESC key handling ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === 'Escape') {
+        if (isEntregarOpen) closeEntregarModal();
+        else if (editOrder)  setEditOrder(null);
+        else if (deleteConfirm) setDeleteConfirm(null);
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [isEntregarOpen, editOrder, deleteConfirm]);
+
   // ── Filter helpers ──────────────────────────────────────────────────────────
   const hasActiveFilters = Object.values(filters).some(v => v !== '');
+
+  const toggleInstitute = (val) => {
+    handleDropdownChange('is_institute', val);
+  };
 
   const setFilter = (key, value) => {
     setFilters(prev => ({ ...prev, [key]: value }));
@@ -172,29 +342,34 @@ export default function HistorialOrdenes() {
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       fetchOrders({ page: 1, cliente: pendingClienteRef.current });
+      fetchStats({ cliente: pendingClienteRef.current });
     }, 400);
   };
 
   const handleDropdownChange = (key, value) => {
     setFilter(key, value);
     fetchOrders({ page: 1, [key]: value });
+    fetchStats({ [key]: value });
   };
 
   const handleDateChange = (key, value) => {
     setFilter(key, value);
     fetchOrders({ page: 1, [key]: value });
+    fetchStats({ [key]: value });
   };
 
   const handleSearch = () => {
     clearTimeout(debounceRef.current);
     fetchOrders({ page: 1 });
+    fetchStats();
   };
 
   const handleClear = () => {
     clearTimeout(debounceRef.current);
-    const empty = { estado_pago: '', estado_orden: '', cliente: '', desde: '', hasta: '' };
+    const empty = { estado_pago: '', estado_orden: '', cliente: '', desde: '', hasta: '', is_institute: '' };
     setFilters(empty);
-    fetchOrders({ page: 1, estado_pago: '', estado_orden: '', cliente: '', desde: '', hasta: '' });
+    fetchOrders({ page: 1, ...empty });
+    fetchStats({ is_institute: '' });
   };
 
   // ── Sort ────────────────────────────────────────────────────────────────────
@@ -267,15 +442,175 @@ export default function HistorialOrdenes() {
       });
       showToast('Orden actualizada', 'success');
       setEditOrder(null);
-      // Refresh table + stats
       fetchOrders({ page: pagination.page });
       fetchStats();
-      // If drawer is open for this order, close it so it reloads fresh
       if (drawerOrder?.id === editOrder.id) closeDrawer();
     } catch (err) {
       showToast(err.message || 'No se pudo actualizar', 'error');
     } finally {
       setEditSaving(false);
+    }
+  };
+
+  // ── Delivery modal ───────────────────────────────────────────────────────────
+  const openEntregarModal = () => {
+    setIsEntregarOpen(true);
+    setDeliverySearch('');
+    setDeliveryResults([]);
+    setDeliveryResultsVisible(false);
+    setSelectedDeliveryOrder(null);
+    setReceivedByName('');
+    setReceivedByCedula('');
+    setInvoiceDelivered(false);
+    setDeliveryError(null);
+    setDeliverySuccess(false);
+    setHighlightedDeliveryIdx(0);
+    setDeliveryMetodoPago('Efectivo');
+    setDeliveryEstadoOrden('Entregada');
+    setDeliveryEstadoPago('Pagada');
+    setTimeout(() => deliverySearchRef.current?.focus(), 80);
+  };
+
+  const closeEntregarModal = () => {
+    if (isDelivering) return;
+    setIsEntregarOpen(false);
+  };
+
+  const getSignatureBase64 = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const ctx = canvas.getContext('2d');
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const hasDrawing = imageData.data.some((val, i) => i % 4 !== 3 && val !== 255);
+    if (!hasDrawing) return null;
+    return canvas.toDataURL('image/png').split(',')[1];
+  };
+
+  const handleDeliverySearch = (e) => {
+    const q = e.target.value;
+    setDeliverySearch(q);
+    setSelectedDeliveryOrder(null);
+    setHighlightedDeliveryIdx(0);
+
+    if (!q.trim()) {
+      setDeliveryResults([]);
+      setDeliveryResultsVisible(false);
+      return;
+    }
+
+    // Client-side filter on already-loaded orders
+    const qLow = q.toLowerCase();
+    const local = orders.filter(o =>
+      (
+        String(o.id).includes(qLow) ||
+        (o.user_name || '').toLowerCase().includes(qLow) ||
+        (o.items_description || '').toLowerCase().includes(qLow) ||
+        (o.received_by_name || '').toLowerCase().includes(qLow)
+      )
+    ).slice(0, 8);
+
+    if (local.length > 0) {
+      setDeliveryResults(local);
+      setDeliveryResultsVisible(true);
+    }
+
+    // Also fetch from server
+    clearTimeout(deliveryDebounceRef.current);
+    deliveryDebounceRef.current = setTimeout(async () => {
+      setDeliverySearching(true);
+      try {
+        const res = await getHistorialOrdenes({ cliente: q, limit: 20, page: 1 });
+        const results = res.data ?? [];
+        
+        if (results.length > 0) {
+          setDeliveryResults(results);
+          setDeliveryResultsVisible(true);
+        } else if (local.length === 0) {
+          setDeliveryResults([]);
+          setDeliveryResultsVisible(true); // show empty state
+        }
+      } catch { /* use local results */ }
+      finally { setDeliverySearching(false); }
+    }, 300);
+  };
+
+  const handleDeliverySearchKeyDown = (e) => {
+    if (!deliveryResultsVisible || deliveryResults.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightedDeliveryIdx(i => (i + 1) % deliveryResults.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightedDeliveryIdx(i => (i - 1 + deliveryResults.length) % deliveryResults.length);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (deliveryResults[highlightedDeliveryIdx]) {
+        selectDeliveryOrder(deliveryResults[highlightedDeliveryIdx]);
+      }
+    } else if (e.key === 'Escape') {
+      setDeliveryResultsVisible(false);
+      setDeliverySearch('');
+      setDeliveryResults([]);
+    }
+  };
+
+  const selectDeliveryOrder = (order) => {
+    setSelectedDeliveryOrder(order);
+    setDeliverySearch(`Orden #${order.id} — ${order.user_name} ✅`);
+    setDeliveryResultsVisible(false);
+    setDeliveryEstadoPago(order.estado_pago === 'Pagada' ? 'Pagada' : 'Pagada'); // Default to Pagada for delivery
+    setHighlightedDeliveryIdx(0);
+  };
+
+  const deliverValidByName = invoiceDelivered || receivedByName.trim();
+  const deliverValidByCedula = invoiceDelivered || receivedByCedula.trim();
+  const canConfirmDelivery = !!selectedDeliveryOrder && deliverValidByName && deliverValidByCedula;
+
+  const handleConfirmDelivery = async () => {
+    if (!canConfirmDelivery) return;
+    setIsDelivering(true);
+    setDeliveryError(null);
+    try {
+      setDeliverySuccess(true);
+      await entregarOrden(selectedDeliveryOrder.id, {
+        received_by_name:   invoiceDelivered ? null : receivedByName.trim(),
+        received_by_cedula: invoiceDelivered ? null : receivedByCedula.trim(),
+        invoice_delivered:  invoiceDelivered,
+        delivery_signature: getSignatureBase64(),
+        metodo_pago:        deliveryEstadoPago === 'Pagada' ? deliveryMetodoPago : null,
+        order_status:       deliveryEstadoOrden,
+        estado_pago:        deliveryEstadoPago,
+      });
+
+      // Update the order in local state
+      const orderId  = selectedDeliveryOrder.id;
+      const hadDebt  = selectedDeliveryOrder.balance_due > 0;
+      const nameWho  = receivedByName.trim();
+
+      setOrders(prev => prev.map(o => {
+        if (o.id !== orderId) return o;
+        return {
+          ...o,
+          order_status: deliveryEstadoOrden,
+          estado_pago:  deliveryEstadoPago,
+          balance_due:  deliveryEstadoPago === 'Pagada' ? 0 : o.balance_due,
+          delivery_received_by: nameWho,
+          delivery_date: new Date().toISOString(),
+          delivery_invoice_delivered: invoiceDelivered,
+        };
+      }));
+
+      setTimeout(() => {
+        setIsEntregarOpen(false);
+        setDeliverySuccess(false);
+        showToast(`Orden #${orderId} entregada — Recibió: ${nameWho}`, 'success');
+        fetchStats();
+      }, 600);
+    } catch (err) {
+      setDeliverySuccess(false);
+      setDeliveryError(err.message || 'Error al registrar la entrega');
+    } finally {
+      setIsDelivering(false);
     }
   };
 
@@ -287,40 +622,18 @@ export default function HistorialOrdenes() {
 
   // ── Pagination display ───────────────────────────────────────────────────────
   const { page, limit, total, total_pages } = pagination;
-  const fromItem = total === 0 ? 0 : (page - 1) * limit + 1;
+  const fromItem = total === 0 ? 0 : Math.min((page - 1) * limit + 1, total);
   const toItem   = Math.min(page * limit, total);
   const pageNums = buildPageNums();
 
   // ── Stats cards data ─────────────────────────────────────────────────────────
+  const goToCartera = onNavigate ? () => onNavigate('facturas-cobrar') : undefined;
+
   const statCards = [
-    {
-      icon: '📦',
-      label: 'Total Órdenes',
-      value: stats?.total_ordenes ?? 0,
-      formatted: false,
-      accentClass: '',
-    },
-    {
-      icon: '💰',
-      label: 'Total Recaudado',
-      value: stats?.total_recaudado ?? 0,
-      formatted: true,
-      accentClass: '',
-    },
-    {
-      icon: '🧾',
-      label: 'Órdenes con Deuda',
-      value: stats?.ordenes_debe ?? 0,
-      formatted: false,
-      accentClass: (stats?.ordenes_debe > 0) ? 'ho-stat-card--orange' : '',
-    },
-    {
-      icon: '⚠️',
-      label: 'Monto por Cobrar',
-      value: stats?.monto_por_cobrar ?? 0,
-      formatted: true,
-      accentClass: (stats?.monto_por_cobrar > 0) ? 'ho-stat-card--red' : '',
-    },
+    { icon: '📦', label: 'Total Órdenes',     value: stats?.total_ordenes ?? 0,     formatted: false, accentClass: '' },
+    { icon: '💰', label: 'Total Recaudado',   value: stats?.total_recaudado ?? 0,   formatted: true,  accentClass: '' },
+    { icon: '🧾', label: 'Órdenes con Deuda', value: stats?.ordenes_debe ?? 0,      formatted: false, accentClass: (stats?.ordenes_debe > 0) ? 'ho-stat-card--orange' : '', onClick: goToCartera, link: 'Ver detalle' },
+    { icon: '⚠️', label: 'Monto por Cobrar',  value: stats?.monto_por_cobrar ?? 0,  formatted: true,  accentClass: (stats?.monto_por_cobrar > 0) ? 'ho-stat-card--red' : '',   onClick: goToCartera, link: 'Ver detalle' },
   ];
 
   return (
@@ -331,12 +644,35 @@ export default function HistorialOrdenes() {
           <h1 className="ho-title">Historial de Órdenes</h1>
           <p className="ho-subtitle">Registro completo de todas las órdenes del negocio</p>
         </div>
+        
+        <div className="ho-institute-toggle">
+          <div className="sa-segment-group" style={{ marginBottom: 0 }}>
+            <button 
+              className={`sa-segment-btn ${filters.is_institute === '' ? 'sa-segment-btn--active' : ''}`}
+              onClick={() => toggleInstitute('')}
+            >Todos</button>
+            <button 
+              className={`sa-segment-btn ${filters.is_institute === false ? 'sa-segment-btn--active' : ''}`}
+              onClick={() => toggleInstitute(false)}
+            >Usuario</button>
+            <button 
+              className={`sa-segment-btn ${filters.is_institute === true ? 'sa-segment-btn--active' : ''}`}
+              onClick={() => toggleInstitute(true)}
+            >Institución</button>
+          </div>
+        </div>
+
+        <div className="ho-header-actions">
+          <button className="ho-btn ho-btn--entregar" onClick={openEntregarModal}>
+            🚚 Entregar Orden
+          </button>
+        </div>
       </div>
 
       {/* ── Stats bar ── */}
       <div className="ho-stats-bar">
         {statCards.map((c) => (
-          <StatCard key={c.label} {...c} loading={statsLoading} />
+          <StatCard key={c.label} {...c} loading={statsLoading} onClick={c.onClick} link={c.link} />
         ))}
       </div>
 
@@ -371,17 +707,26 @@ export default function HistorialOrdenes() {
             onChange={e => handleDropdownChange('estado_orden', e.target.value)}
           >
             <option value="">Todos</option>
-            <option value="Recibida">Recibida</option>
-            <option value="En proceso">En proceso</option>
-            <option value="Lista para entregar">Lista para entregar</option>
-            <option value="Entregada">Entregada</option>
-            <option value="Cancelada">Cancelada</option>
+            {uniqueStatuses.length > 0 ? (
+              uniqueStatuses.map(s => (
+                <option key={s} value={s}>{ORDEN_CFG[s]?.label || s}</option>
+              ))
+            ) : (
+              // Fallback to defaults if uniqueStatuses not yet loaded or empty
+              <>
+                <option value="Recibida">Recibida</option>
+                <option value="En progreso">En progreso</option>
+                <option value="Lista para entregar">Lista para entregar</option>
+                <option value="Entregada">Entregada</option>
+                <option value="Cancelada">Cancelada</option>
+              </>
+            )}
           </select>
         </div>
 
         <div className="ho-filter-group ho-filter-group--grow">
           <label className="ho-filter-label">
-            Cliente
+            Buscar
             {filters.cliente && <span className="ho-filter-dot" />}
           </label>
           <div className="ho-input-wrap">
@@ -389,7 +734,7 @@ export default function HistorialOrdenes() {
             <input
               className="ho-input"
               type="text"
-              placeholder="Buscar por nombre..."
+              placeholder="Orden, cliente, contacto..."
               value={filters.cliente}
               onChange={handleClienteInput}
             />
@@ -453,19 +798,22 @@ export default function HistorialOrdenes() {
               <th className="ho-th ho-th--id ho-th--sortable" onClick={() => handleSort('id')}>
                 ID <SortIcon field="id" />
               </th>
-              <th className="ho-th">Fecha</th>
               <th className="ho-th">Factura Global</th>
-              <th className="ho-th">Estado Pago</th>
+              <th className="ho-th">Creación</th>
+              <th className="ho-th">Días</th>
               <th className="ho-th">Estado Orden</th>
+              <th className="ho-th">Estado Pago</th>
               <th className="ho-th ho-th--sortable" onClick={() => handleSort('user_name')}>
-                Cliente <SortIcon field="user_name" />
+                Nombre / Institución <SortIcon field="user_name" />
               </th>
               <th className="ho-th">Contacto</th>
-              <th className="ho-th ho-th--sortable ho-th--num" onClick={() => handleSort('total_amount')}>
-                Total <SortIcon field="total_amount" />
-              </th>
+              <th className="ho-th ho-th--num">Total</th>
+              <th className="ho-th ho-th--num">Abonos</th>
               <th className="ho-th ho-th--num">Restante</th>
               <th className="ho-th ho-th--num">Descuento</th>
+              <th className="ho-th ho-th--num">Costo Agencia</th>
+              <th className="ho-th ho-th--num">Ingreso Neto</th>
+              <th className="ho-th ho-th--desc">Descripción</th>
             </tr>
           </thead>
           <tbody>
@@ -473,7 +821,7 @@ export default function HistorialOrdenes() {
               <SkeletonRows />
             ) : orders.length === 0 ? (
               <tr>
-                <td colSpan={11}>
+                <td colSpan={12}>
                   <div className="ho-empty">
                     <div className="ho-empty-icon">🗂️</div>
                     <p className="ho-empty-title">No se encontraron órdenes</p>
@@ -494,7 +842,7 @@ export default function HistorialOrdenes() {
               orders.map((o, idx) => (
                 <tr
                   key={o.id}
-                  className="ho-row"
+                  className={`ho-row${o.order_status === 'Entregada' ? ' ho-row--delivered' : ''}`}
                   style={{ animationDelay: `${idx * 35}ms` }}
                   onClick={() => openDrawer(o)}
                 >
@@ -515,32 +863,45 @@ export default function HistorialOrdenes() {
                         title="Eliminar"
                         onClick={e => { e.stopPropagation(); setDeleteConfirm(o.id); }}
                       >🗑️</button>
+                      {o.delivery_received_by && (
+                        <span
+                          className="ho-action-btn ho-delivered-icon"
+                          title={`Entregado: ${fmtDateTime(o.delivery_date)} • Recibió: ${o.delivery_received_by} • Factura: ${o.delivery_invoice_delivered ? 'Sí' : 'No'}`}
+                        >📋</span>
+                      )}
                     </div>
                   </td>
                   <td className="ho-td ho-td--id">#{o.id}</td>
-                  <td className="ho-td">{fmtDate(o.date)}</td>
                   <td className="ho-td">
                     {o.consolidated_invoice_id
-                      ? <span className="ho-invoice-link">#{o.consolidated_invoice_id}</span>
+                      ? <span className="ho-invoice-link">F-{o.consolidated_invoice_id}</span>
                       : <span className="ho-na">N/A</span>}
                   </td>
-                  <td className="ho-td"><Badge value={o.estado_pago} cfg={PAGO_CFG} /></td>
-                  <td className="ho-td"><Badge value={o.order_status} cfg={ORDEN_CFG} /></td>
+                  <td className="ho-td ho-td--date">{fmtDateTime(o.date)}</td>
+                  <td className={`ho-td ho-td--days ${o.days_passed > 3 ? 'ho-td--late' : ''}`}>
+                    {o.days_passed} {o.days_passed === 1 ? 'día' : 'días'}
+                  </td>
+                  <td className="ho-td">
+                    <Badge value={o.order_status} cfg={ORDEN_CFG} />
+                  </td>
+                  <td className="ho-td">
+                    <Badge value={o.estado_pago} cfg={PAGO_CFG} />
+                  </td>
                   <td className="ho-td ho-td--client">
                     {o.is_institute && <span className="ho-b2b-icon">🏢</span>}
                     <span className="ho-client-name">{o.user_name}</span>
                   </td>
-                  <td className="ho-td ho-td--contact">{o.user_id}</td>
-                  <td className="ho-td ho-td--num">{fmtCOP(o.total_amount)}</td>
-                  <td className="ho-td ho-td--num">
-                    <span className={o.balance_due > 0 ? 'ho-val--red' : 'ho-val--green'}>
-                      {fmtCOP(o.balance_due)}
-                    </span>
+                  <td className="ho-td ho-td--contact">{o.user_contact || '—'}</td>
+                  <td className="ho-td ho-td--num ho-td--bold">{fmtCOP(o.total_amount)}</td>
+                  <td className="ho-td ho-td--num ho-td--green">{fmtCOP(o.total_paid)}</td>
+                  <td className={`ho-td ho-td--num ${o.balance_due > 0 ? 'ho-td--debt' : ''}`}>
+                    {fmtCOP(o.balance_due)}
                   </td>
-                  <td className="ho-td ho-td--num">
-                    {o.discount > 0
-                      ? <span className="ho-val--gray">-{fmtCOP(o.discount)}</span>
-                      : <span className="ho-na">—</span>}
+                  <td className="ho-td ho-td--num ho-td--muted">{fmtCOP(o.discount)}</td>
+                  <td className="ho-td ho-td--num ho-td--red">{fmtCOP(o.agency_cost)}</td>
+                  <td className="ho-td ho-td--num ho-td--net">{fmtCOP(o.net_income_value)}</td>
+                  <td className="ho-td ho-td--desc" title={o.items_description}>
+                    {truncate(o.items_description, 40) || '—'}
                   </td>
                 </tr>
               ))
@@ -604,13 +965,12 @@ export default function HistorialOrdenes() {
       )}
 
       {/* ── Order Detail Drawer ── */}
-      {drawerOrder && (
+      {drawerOrder && createPortal(
         <div className={`ho-drawer-overlay ${drawerClosing ? 'ho-drawer-overlay--out' : ''}`} onClick={closeDrawer}>
           <aside
             className={`ho-drawer ${drawerClosing ? 'ho-drawer--out' : ''}`}
             onClick={e => e.stopPropagation()}
           >
-            {/* Drawer header */}
             <div className="ho-drawer-header">
               <div>
                 <h2 className="ho-drawer-title">Orden #{drawerOrder.id}</h2>
@@ -619,13 +979,11 @@ export default function HistorialOrdenes() {
               <button className="ho-drawer-close" onClick={closeDrawer}>✕</button>
             </div>
 
-            {/* Badges row */}
             <div className="ho-drawer-badges">
               <Badge value={drawerOrder.estado_pago} cfg={PAGO_CFG} />
               <Badge value={drawerOrder.order_status} cfg={ORDEN_CFG} />
             </div>
 
-            {/* Client info */}
             <div className="ho-drawer-client">
               {drawerOrder.is_institute && <span className="ho-b2b-icon ho-b2b-icon--lg">🏢</span>}
               <span className="ho-drawer-client-name">{drawerOrder.user_name}</span>
@@ -636,7 +994,6 @@ export default function HistorialOrdenes() {
               </p>
             )}
 
-            {/* Financial summary */}
             <div className="ho-drawer-financial">
               <div className="ho-fin-row">
                 <span>Subtotal</span>
@@ -667,7 +1024,6 @@ export default function HistorialOrdenes() {
               </div>
             </div>
 
-            {/* Items description */}
             {drawerOrder.items_description && (
               <div className="ho-drawer-items">
                 <p className="ho-drawer-items-label">Prendas / Servicios:</p>
@@ -675,7 +1031,6 @@ export default function HistorialOrdenes() {
               </div>
             )}
 
-            {/* Footer actions */}
             <div className="ho-drawer-footer">
               <button className="ho-btn ho-btn--outline" onClick={() => window.print()}>
                 🖨️ Imprimir orden
@@ -694,10 +1049,10 @@ export default function HistorialOrdenes() {
             </div>
           </aside>
         </div>
-      )}
+      , document.body)}
 
       {/* ── Edit modal ── */}
-      {editOrder && (
+      {editOrder && createPortal(
         <div className="ho-modal-overlay" onClick={() => !editSaving && setEditOrder(null)}>
           <div className="ho-modal ho-modal--edit" onClick={e => e.stopPropagation()}>
             <div className="ho-modal-header">
@@ -728,7 +1083,6 @@ export default function HistorialOrdenes() {
                     <option value="Cancelada">Cancelada</option>
                   </select>
                 </div>
-
                 <div className="ho-edit-field">
                   <label className="ho-filter-label">Estado Pago</label>
                   <select
@@ -745,9 +1099,7 @@ export default function HistorialOrdenes() {
                 </div>
               </div>
 
-              <div className="ho-edit-divider">
-                <span>Registrar pago adicional (opcional)</span>
-              </div>
+              <div className="ho-edit-divider"><span>Registrar pago adicional (opcional)</span></div>
 
               <div className="ho-edit-row">
                 <div className="ho-edit-field">
@@ -765,7 +1117,6 @@ export default function HistorialOrdenes() {
                     <option value="Daviplata">Daviplata</option>
                   </select>
                 </div>
-
                 <div className="ho-edit-field">
                   <label className="ho-filter-label">Monto Pagado</label>
                   <input
@@ -781,7 +1132,6 @@ export default function HistorialOrdenes() {
                 </div>
               </div>
 
-              {/* Current balance info */}
               <div className="ho-edit-balance">
                 <span>Saldo actual:</span>
                 <span className={editOrder.balance_due > 0 ? 'ho-val--red' : 'ho-val--green'}>
@@ -795,9 +1145,7 @@ export default function HistorialOrdenes() {
                   className="ho-btn ho-btn--ghost"
                   onClick={() => setEditOrder(null)}
                   disabled={editSaving}
-                >
-                  Cancelar
-                </button>
+                >Cancelar</button>
                 <button
                   type="submit"
                   className={`ho-btn ho-btn--primary ${editSaving ? 'ho-btn--saving' : ''}`}
@@ -809,10 +1157,10 @@ export default function HistorialOrdenes() {
             </form>
           </div>
         </div>
-      )}
+      , document.body)}
 
       {/* ── Delete confirm modal ── */}
-      {deleteConfirm && (
+      {deleteConfirm && createPortal(
         <div className="ho-modal-overlay" onClick={() => setDeleteConfirm(null)}>
           <div className="ho-modal" onClick={e => e.stopPropagation()}>
             <h3 className="ho-modal-title">¿Eliminar orden?</h3>
@@ -829,7 +1177,308 @@ export default function HistorialOrdenes() {
             </div>
           </div>
         </div>
-      )}
+      , document.body)}
+
+      {/* ── Entregar Orden modal ── */}
+      {isEntregarOpen && createPortal(
+        <div
+          className="ho-modal-overlay ho-entregar-overlay"
+          onClick={closeEntregarModal}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Entregar Orden"
+        >
+          <div
+            className={`ho-modal ho-modal--entregar${deliverySuccess ? ' ho-modal--success-flash' : ''}`}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="ho-modal-header ho-entregar-header">
+              <div>
+                <h3 className="ho-modal-title ho-entregar-title">🚚 Entregar Orden</h3>
+                <p className="ho-modal-sub">Busca la orden y registra la entrega</p>
+              </div>
+              <button
+                className="ho-drawer-close"
+                onClick={closeEntregarModal}
+                disabled={isDelivering}
+                aria-label="Cerrar modal"
+              >✕</button>
+            </div>
+
+            {/* Error banner */}
+            {deliveryError && (
+              <div className="ho-entregar-error" role="alert">
+                <span>⚠️ {deliveryError}</span>
+                <button
+                  className="ho-btn ho-btn--ghost ho-btn--sm"
+                  onClick={() => setDeliveryError(null)}
+                >✕</button>
+              </div>
+            )}
+
+            {/* Search section — outside scroll body so dropdown isn't clipped */}
+            <div className="ho-entregar-search-section">
+                <div className="ho-entregar-search-wrap">
+                  <span className="ho-entregar-search-icon" aria-hidden="true">🔍</span>
+                  <input
+                    ref={deliverySearchRef}
+                    className={`ho-entregar-search-input${selectedDeliveryOrder ? ' ho-entregar-search-input--selected' : ''}`}
+                    type="text"
+                    placeholder="Buscar por orden, cliente, descripción..."
+                    value={deliverySearch}
+                    onChange={handleDeliverySearch}
+                    onKeyDown={handleDeliverySearchKeyDown}
+                    onFocus={() => {
+                      if (deliveryResults.length > 0 && !selectedDeliveryOrder) setDeliveryResultsVisible(true);
+                    }}
+                    readOnly={!!selectedDeliveryOrder}
+                    aria-label="Buscar orden para entrega"
+                    aria-haspopup="listbox"
+                    aria-expanded={deliveryResultsVisible}
+                    autoComplete="off"
+                  />
+                  {deliverySearching && <span className="ho-entregar-search-spinner" aria-hidden="true" />}
+                  {selectedDeliveryOrder && (
+                    <button
+                      className="ho-entregar-clear-btn"
+                      onClick={() => {
+                        setSelectedDeliveryOrder(null);
+                        setDeliverySearch('');
+                        setDeliveryResults([]);
+                        setDeliveryResultsVisible(false);
+                        setTimeout(() => deliverySearchRef.current?.focus(), 30);
+                      }}
+                      aria-label="Cambiar orden seleccionada"
+                    >✕ cambiar orden</button>
+                  )}
+                </div>
+
+                {/* Search results dropdown */}
+                {deliveryResultsVisible && !selectedDeliveryOrder && (
+                  <div className="ho-entregar-dropdown" role="listbox" aria-label="Órdenes encontradas">
+                    {deliveryResults.length === 0 ? (
+                      <div className="ho-entregar-dropdown-empty">
+                        Sin resultados activos para "{deliverySearch}"
+                      </div>
+                    ) : (
+                      deliveryResults.map((o, idx) => (
+                        <div
+                          key={o.id}
+                          className={`ho-entregar-result${idx === highlightedDeliveryIdx ? ' ho-entregar-result--hl' : ''}`}
+                          role="option"
+                          aria-selected={idx === highlightedDeliveryIdx}
+                          onMouseEnter={() => setHighlightedDeliveryIdx(idx)}
+                          onMouseDown={e => { e.preventDefault(); selectDeliveryOrder(o); }}
+                        >
+                          <div className="ho-er-top">
+                            <span className="ho-er-id">#{o.id}</span>
+                            <span className="ho-er-name">
+                              {o.is_institute && <span className="ho-b2b-icon">🏢</span>}
+                              {o.user_name}
+                            </span>
+                            <span className={`ho-badge ho-badge--sm ${(ORDEN_CFG[o.order_status] || {}).cls || 'ho-badge--gray'}`}>
+                              {(ORDEN_CFG[o.order_status] || {}).label || o.order_status}
+                            </span>
+                            {o.consolidated_invoice_id && (
+                              <span className="ho-er-b2b">B2B #{o.consolidated_invoice_id}</span>
+                            )}
+                            <span className="ho-er-total">{fmtCOP(o.total_amount)}</span>
+                          </div>
+                          {o.items_description && (
+                            <div className="ho-er-desc">
+                              {truncate(o.items_description, 60)}
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+
+            {/* Body — scrollable, contains order card + form */}
+            <div className="ho-entregar-body" ref={modalBodyRef}>
+
+              {/* Order summary card */}
+              {selectedDeliveryOrder && (
+                <div className="ho-entregar-order-card">
+                  <div className="ho-eoc-header">
+                    <span className="ho-eoc-id">Orden #{selectedDeliveryOrder.id}</span>
+                    <div className="ho-eoc-badges">
+                      <Badge value={selectedDeliveryOrder.order_status} cfg={ORDEN_CFG} />
+                      <Badge value={selectedDeliveryOrder.estado_pago}  cfg={PAGO_CFG} />
+                    </div>
+                  </div>
+                  <div className="ho-eoc-client">
+                    <span>👤 {selectedDeliveryOrder.user_name}</span>
+                    {selectedDeliveryOrder.user_id && <span>📞 {selectedDeliveryOrder.user_id}</span>}
+                  </div>
+                  {selectedDeliveryOrder.items_description && (
+                    <div className="ho-eoc-desc">
+                      📝 {selectedDeliveryOrder.items_description}
+                    </div>
+                  )}
+                  <div className="ho-eoc-financial">
+                    <span>💰 Total: <strong>{fmtCOP(selectedDeliveryOrder.total_amount)}</strong></span>
+                    <span>
+                      Restante:{' '}
+                      <strong className={selectedDeliveryOrder.balance_due > 0 ? 'ho-val--red' : 'ho-val--green'}>
+                        {fmtCOP(selectedDeliveryOrder.balance_due)}
+                      </strong>
+                    </span>
+                  </div>
+                  {selectedDeliveryOrder.balance_due > 0 && (
+                    <div className="ho-eoc-warning">
+                      <span>⚠️</span>
+                      <div>
+                        <strong>Esta orden tiene saldo pendiente: {fmtCOP(selectedDeliveryOrder.balance_due)}</strong>
+                        <p>Al confirmar la entrega se marcará como Pagada automáticamente</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Delivery form */}
+              {selectedDeliveryOrder && (
+                <div className="ho-entregar-form">
+                  {/* ── Receiver info ── */}
+                  <div className="ho-ef-toggle-row">
+                    <span className="ho-filter-label">🧾 ¿Se entregó factura física?</span>
+                    <label className="ho-toggle" aria-label="¿Factura entregada?">
+                      <input
+                        type="checkbox"
+                        checked={invoiceDelivered}
+                        onChange={e => setInvoiceDelivered(e.target.checked)}
+                      />
+                      <span className="ho-toggle-track">
+                        <span className="ho-toggle-thumb" />
+                      </span>
+                      <span className="ho-toggle-label">{invoiceDelivered ? 'Sí' : 'No'}</span>
+                    </label>
+                  </div>
+
+                  {!invoiceDelivered && (
+                    <>
+                      <h4 className="ho-ef-section-title">👤 Datos de quien recoge</h4>
+                      <div className="ho-ef-fields">
+                        <div className="ho-ef-field">
+                          <label className="ho-filter-label" htmlFor="ef-nombre">
+                            Nombre completo <span className="ho-ef-required">*</span>
+                          </label>
+                          <input
+                            id="ef-nombre"
+                            className="ho-input ho-input--plain ho-ef-input"
+                            type="text"
+                            placeholder="Ej. María Torres"
+                            value={receivedByName}
+                            onChange={e => setReceivedByName(e.target.value)}
+                            aria-required="true"
+                            autoComplete="off"
+                          />
+                        </div>
+                        <div className="ho-ef-field">
+                          <label className="ho-filter-label" htmlFor="ef-cedula">
+                            Cédula <span className="ho-ef-required">*</span>
+                          </label>
+                          <input
+                            id="ef-cedula"
+                            className="ho-input ho-input--plain ho-ef-input"
+                            type="text"
+                            placeholder="Ej. 1234567890"
+                            value={receivedByCedula}
+                            onChange={e => setReceivedByCedula(e.target.value)}
+                            aria-required="true"
+                            autoComplete="off"
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* ── Payment & Status ── */}
+                  <div className="ho-ef-fields">
+                    <div className="ho-ef-field">
+                      <label className="ho-filter-label">🏁 Nuevo Estado Orden</label>
+                      <select 
+                        className="ho-select ho-select--full"
+                        value={deliveryEstadoOrden}
+                        onChange={e => setDeliveryEstadoOrden(e.target.value)}
+                      >
+                        <option value="Entregada">Entregada (Finalizar)</option>
+                        <option value="Lista para entregar">Lista para entregar</option>
+                        <option value="En proceso">En proceso</option>
+                      </select>
+                    </div>
+
+                    <div className="ho-ef-field">
+                      <label className="ho-filter-label">💰 Nuevo Estado Pago</label>
+                      <select 
+                        className="ho-select ho-select--full"
+                        value={deliveryEstadoPago}
+                        onChange={e => setDeliveryEstadoPago(e.target.value)}
+                      >
+                        <option value="Pagada">Pagada</option>
+                        <option value="Debe">Debe</option>
+                        <option value="Parcial">Parcial</option>
+                      </select>
+                    </div>
+
+                    {deliveryEstadoPago === 'Pagada' && selectedDeliveryOrder.balance_due > 0 && (
+                      <div className="ho-ef-field">
+                        <label className="ho-filter-label">💳 Método Pago Saldo</label>
+                        <select
+                          className="ho-select ho-select--full"
+                          value={deliveryMetodoPago}
+                          onChange={e => setDeliveryMetodoPago(e.target.value)}
+                        >
+                          <option value="Efectivo">Efectivo</option>
+                          <option value="Transferencia">Transferencia</option>
+                          <option value="Nequi">Nequi</option>
+                          <option value="Daviplata">Daviplata</option>
+                          <option value="Tarjeta">Tarjeta</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Signature canvas — tablet only */}
+                  {isTablet && (
+                    <div className="ho-ef-canvas-section">
+                      <span className="ho-filter-label">✍️ Firma del cliente</span>
+                      <SignatureCanvas canvasRef={canvasRef} />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="ho-entregar-footer">
+              <span className="ho-ef-required-note">(* campos requeridos)</span>
+              <div className="ho-entregar-footer-actions">
+                <button
+                  className="ho-btn ho-btn--ghost"
+                  onClick={closeEntregarModal}
+                  disabled={isDelivering}
+                >Cancelar</button>
+                <button
+                  className={`ho-btn ho-btn--entregar-confirm${!canConfirmDelivery ? ' ho-btn--disabled' : ''}${isDelivering ? ' ho-btn--saving' : ''}`}
+                  onClick={handleConfirmDelivery}
+                  disabled={!canConfirmDelivery || isDelivering}
+                  aria-label="Confirmar entrega"
+                >
+                  {isDelivering
+                    ? <><span className="ho-btn-spinner" aria-hidden="true" /> Registrando entrega…</>
+                    : '✅ Confirmar Entrega'
+                  }
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      , document.body)}
 
       {/* ── Toast ── */}
       {toast && (

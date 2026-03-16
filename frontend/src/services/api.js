@@ -23,6 +23,12 @@ async function request(path, options = {}) {
     throw new Error('Sesión expirada');
   }
 
+  if (res.status === 402) {
+    localStorage.setItem('washflow_plan', 'none');
+    window.dispatchEvent(new Event('washflow:plan-required'));
+    throw new Error('Suscripción requerida');
+  }
+
   if (res.status === 204) return null;
 
   if (!res.ok) {

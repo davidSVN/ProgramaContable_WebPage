@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { usePlan } from '../../hooks/usePlan';
 
 const NAV = [
   {
@@ -13,16 +14,21 @@ const NAV = [
     special: 'nueva-orden',
   },
   {
+    id: 'b2b-ordenes',
+    label: 'B2B Órdenes',
+    icon: <BriefcaseIcon />,
+  },
+  {
     id: 'ordenes',
     label: 'Órdenes',
     icon: <PackageIcon />,
     group: true,
     children: [
-      { id: 'b2b-ordenes', label: 'B2B Órdenes', emoji: '📋' },
-      { id: 'historial-ordenes', label: 'Historial de Órdenes', emoji: '🕐' },
-      { id: 'gastos-negocio', label: 'Gastos del Negocio', emoji: '💸' },
-      { id: 'facturas-cobrar', label: 'Facturas por Cobrar', emoji: '🧾' },
-      { id: 'servicios-terceros', label: 'Servicios a Terceros', emoji: '📤' },
+      { id: 'historial-ordenes',  label: 'Historial de Órdenes',   emoji: '🕐' },
+      { id: 'servicios-ordenes',  label: 'Servicios por Órdenes',  emoji: '📋' },
+      { id: 'gastos-negocio',     label: 'Gastos del Negocio',     emoji: '💸' },
+      { id: 'facturas-cobrar',    label: 'Facturas por Cobrar',    emoji: '🧾' },
+      { id: 'servicios-terceros', label: 'Servicios en Agencia',   emoji: '📤' },
     ],
   },
   { id: 'usuarios', label: 'Usuarios', icon: <UserIcon /> },
@@ -36,6 +42,7 @@ const NAV = [
 export default function Sidebar({ activeSection, onNavigate, user, collapsed, onCollapse }) {
   const [ordenesOpen, setOrdenesOpen] = useState(true);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { isNone } = usePlan();
 
   // Expose mobile toggle via window for Topbar
   useEffect(() => {
@@ -125,20 +132,28 @@ export default function Sidebar({ activeSection, onNavigate, user, collapsed, on
               );
             }
 
+            const blocked = item.special === 'nueva-orden' && isNone;
             return (
               <button
                 key={item.id}
                 className={`nav-item ${item.special || ''} ${activeSection === item.id ? 'active' : ''}`}
-                onClick={() => handleNav(item.id)}
+                onClick={blocked ? undefined : () => handleNav(item.id)}
                 aria-current={activeSection === item.id ? 'page' : undefined}
+                style={blocked ? { opacity: 0.4, pointerEvents: 'none' } : undefined}
+                title={blocked ? 'Activa una suscripción para crear órdenes' : undefined}
               >
                 <span className="nav-item__icon" aria-hidden="true">{item.icon}</span>
                 <span className="nav-item__label">{item.label}</span>
-                <span className="nav-tooltip" role="tooltip">{item.label}</span>
+                <span className="nav-tooltip" role="tooltip">
+                  {blocked ? 'Activa una suscripción para crear órdenes' : item.label}
+                </span>
               </button>
             );
           })}
         </nav>
+
+        {/* Plan badge */}
+        <PlanBadge collapsed={collapsed} onNavigate={handleNav} />
 
         {/* User */}
         <div className="sidebar-user">
@@ -152,6 +167,42 @@ export default function Sidebar({ activeSection, onNavigate, user, collapsed, on
         </div>
       </aside>
     </>
+  );
+}
+
+/* ── Plan Badge ─────────────────────────────────────────── */
+const PLAN_DOT_COLORS = { premium: '#FF6B2B', basic: '#185FA5', none: '#9B9790', superadmin: '#9B9790' };
+const PLAN_LABELS = { premium: 'Premium ⭐', basic: 'Basic', none: 'Sin plan', superadmin: 'Superadmin' };
+
+function PlanBadge({ collapsed, onNavigate }) {
+  const plan = localStorage.getItem('washflow_plan') ?? 'none';
+  const dotColor = PLAN_DOT_COLORS[plan] || '#9B9790';
+
+  if (collapsed) {
+    return (
+      <div
+        className="sidebar-plan-dot sidebar-plan-dot--solo"
+        title={`Plan ${PLAN_LABELS[plan] || plan}`}
+        style={{ '--dot-color': dotColor }}
+      />
+    );
+  }
+
+  return (
+    <div className="sidebar-plan-badge">
+      <div className="sidebar-plan-badge__row">
+        <span className="sidebar-plan-dot" style={{ '--dot-color': dotColor }} />
+        <span className="sidebar-plan-badge__label">{PLAN_LABELS[plan] || plan}</span>
+      </div>
+      {plan === 'basic' && (
+        <button
+          className="sidebar-plan-badge__upgrade"
+          onClick={() => onNavigate('configuracion')}
+        >
+          Mejorar →
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -263,6 +314,15 @@ function ChevronDownIcon({ size = 16 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="6 9 12 15 18 9"/>
+    </svg>
+  );
+}
+
+function BriefcaseIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
+      <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
     </svg>
   );
 }
