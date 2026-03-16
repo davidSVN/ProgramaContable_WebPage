@@ -38,7 +38,7 @@ export async function deleteInstitucion(id) {
 // GET /api/b2b/ordenes?user_id=... → order history
 export async function getInstitucionOrdenes(id) {
   try {
-    return await api.get(`/b2b/ordenes/?user_id=${id}`);
+    return await api.get(`/b2b/ordenes?user_id=${id}`);
   } catch (err) {
     throw new Error(err.message || 'Error al cargar órdenes');
   }
@@ -47,7 +47,7 @@ export async function getInstitucionOrdenes(id) {
 // GET /api/b2b/facturas?user_id=... → consolidated invoices
 export async function getInstitucionFacturas(id) {
   try {
-    return await api.get(`/b2b/facturas/?user_id=${id}`);
+    return await api.get(`/b2b/facturas?user_id=${id}`);
   } catch (err) {
     throw new Error(err.message || 'Error al cargar facturas');
   }

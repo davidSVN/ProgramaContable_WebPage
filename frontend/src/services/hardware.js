@@ -3,7 +3,9 @@
  * Se asume que el servicio de hardware corre en http://localhost:8001
  */
 
-const HARDWARE_URL = 'http://localhost:8001';
+// Use environment variable or fallback to localhost if not defined
+const HARDWARE_URL = import.meta.env.VITE_HARDWARE_URL || 'http://localhost:8001';
+const API_URL = `${HARDWARE_URL}/api`;
 
 export const imprimirOrden = async (orderData) => {
   try {
