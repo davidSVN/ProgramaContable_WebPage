@@ -54,7 +54,9 @@ async def listar(
     search_contacts: Optional[List[str]] = None,
 ) -> List[ProveedorDTO]:
     """Lista proveedores del tenant con filtros opcionales por nombre y contacto."""
-    query = select(Provider).where(Provider.tenant_id == tenant_id)
+    query = select(Provider)
+    if tenant_id is not None:
+        query = query.where(Provider.tenant_id == tenant_id)
 
     if search_names:
         conds = [Provider.prov_name.ilike(f"%{name}%") for name in search_names]
@@ -108,12 +110,11 @@ async def actualizar(
 ) -> ProveedorDTO | str:
     """Actualiza un proveedor del tenant. Devuelve ProveedorDTO o str con error."""
     try:
-        result = await db.execute(
-            select(Provider).where(
-                Provider.tenant_id == tenant_id,
-                Provider.prov_id == proveedor_id,
-            )
-        )
+        stmt = select(Provider).where(Provider.prov_id == proveedor_id)
+        if tenant_id is not None:
+            stmt = stmt.where(Provider.tenant_id == tenant_id)
+        
+        result = await db.execute(stmt)
         prov = result.scalars().first()
         if not prov:
             return f"Proveedor #{proveedor_id} no encontrado."
@@ -148,12 +149,11 @@ async def borrar(
 ) -> bool | str:
     """Elimina un proveedor. Devuelve True o str con error."""
     try:
-        result = await db.execute(
-            select(Provider).where(
-                Provider.tenant_id == tenant_id,
-                Provider.prov_id == proveedor_id,
-            )
-        )
+        stmt = select(Provider).where(Provider.prov_id == proveedor_id)
+        if tenant_id is not None:
+            stmt = stmt.where(Provider.tenant_id == tenant_id)
+            
+        result = await db.execute(stmt)
         prov = result.scalars().first()
         if not prov:
             return f"Proveedor #{proveedor_id} no encontrado."

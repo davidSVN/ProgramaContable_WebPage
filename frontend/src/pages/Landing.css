@@ -1,0 +1,243 @@
+/* ─── Hero ───────────────────────────────────────────── */
+.landing { overflow-x: hidden; }
+
+.hero {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  padding: 100px 24px 60px;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.hero__inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 60px;
+  width: 100%;
+  position: relative;
+  z-index: 1;
+}
+
+.hero__text {
+  flex: 1;
+  animation: heroIn 0.7s ease both;
+}
+
+.hero__eyebrow { margin-bottom: 20px; }
+
+.hero__badge {
+  display: inline-block;
+  background: var(--surface);
+  border: var(--border);
+  box-shadow: var(--shadow-sm);
+  padding: 5px 14px;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--orange);
+}
+
+.hero__headline {
+  font-family: var(--font-head);
+  font-size: clamp(2.8rem, 6vw, 5rem);
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.5px;
+  color: var(--black);
+  margin-bottom: 20px;
+}
+
+.hero__headline--accent { color: var(--orange); }
+
+.hero__sub {
+  font-size: clamp(1rem, 2vw, 1.2rem);
+  color: var(--gray);
+  line-height: 1.65;
+  margin-bottom: 32px;
+  max-width: 460px;
+}
+
+.hero__actions {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 32px;
+}
+
+.hero__cta-main {
+  font-size: 1.05rem;
+  padding: 14px 30px;
+}
+
+.hero__trust {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.85rem;
+  color: var(--gray);
+  font-weight: 500;
+}
+
+.hero__avatars {
+  display: flex;
+}
+
+.hero__avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--orange);
+  border: 2px solid var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--white);
+  margin-left: -6px;
+}
+
+.hero__avatar:first-child { margin-left: 0; }
+
+.hero__visual {
+  animation: heroIn 0.7s ease 0.2s both;
+  display: flex;
+  justify-content: center;
+}
+
+/* Decorative blobs */
+.hero__deco {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.hero__deco--1 {
+  width: 400px;
+  height: 400px;
+  background: var(--orange);
+  opacity: 0.06;
+  top: -100px;
+  right: -100px;
+}
+
+.hero__deco--2 {
+  width: 250px;
+  height: 250px;
+  background: var(--orange);
+  opacity: 0.04;
+  bottom: 50px;
+  left: -50px;
+}
+
+/* ─── Pricing teaser ─────────────────────────────────── */
+.pricing-teaser {
+  padding: 80px 24px;
+  background: var(--orange);
+  text-align: center;
+}
+
+.pricing-inner {
+  max-width: 600px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.pricing-title {
+  font-family: var(--font-head);
+  font-size: clamp(1.8rem, 3vw, 2.5rem);
+  font-weight: 800;
+  color: var(--white);
+  line-height: 1.2;
+}
+
+.pricing-sub {
+  color: rgba(255,255,255,0.85);
+  font-size: 1.05rem;
+}
+
+.pricing-teaser .neo-btn-primary {
+  background: var(--white);
+  color: var(--orange);
+  border-color: var(--white);
+  box-shadow: 4px 4px 0 rgba(0,0,0,0.25);
+  font-size: 1.05rem;
+}
+
+/* ─── Footer ─────────────────────────────────────────── */
+.footer {
+  background: var(--black);
+  color: var(--white);
+  padding: 40px 24px;
+}
+
+.footer__inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.footer__brand {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.footer__logo {
+  font-family: var(--font-head);
+  font-size: 1.2rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.footer__tagline {
+  font-size: 0.85rem;
+  color: rgba(255,255,255,0.55);
+}
+
+.footer__links {
+  display: flex;
+  gap: 24px;
+}
+
+.footer__links a {
+  font-size: 0.88rem;
+  color: rgba(255,255,255,0.65);
+  transition: color 0.15s;
+}
+
+.footer__links a:hover { color: var(--white); }
+
+.footer__copy {
+  font-size: 0.82rem;
+  color: rgba(255,255,255,0.4);
+}
+
+/* ─── Responsive ─────────────────────────────────────── */
+@media (max-width: 900px) {
+  .hero__inner {
+    flex-direction: column;
+    text-align: center;
+    gap: 40px;
+  }
+  .hero__sub, .hero__trust { margin-left: auto; margin-right: auto; }
+  .hero__actions { justify-content: center; }
+}
+
+@media (max-width: 600px) {
+  .footer__inner { flex-direction: column; text-align: center; align-items: center; }
+}

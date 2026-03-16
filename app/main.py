@@ -9,12 +9,23 @@ from app.database import init_db
 
 load_dotenv()
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Evento de inicio: crea las tablas en la BD."""
-    await init_db()
+    """Evento de inicio: crea las tablas en la BD y arranca scheduler."""
+    # await init_db()  # Temporarily disabled to debug hang
+    
+    # Iniciar scheduler en segundo plano
+    import asyncio
+    from app.services.scheduler import run_nightly_scheduler
+    from app.database import AsyncSessionLocal
+    
+    # Guardamos la referencia para cancelarla al apagar si fuera necesario
+    scheduler_task = asyncio.create_task(run_nightly_scheduler(AsyncSessionLocal))
+    
     yield
+    
+    # Al apagar el servidor
+    scheduler_task.cancel()
 
 
 app = FastAPI(
@@ -26,12 +37,11 @@ app = FastAPI(
 
 # ─── CORS ─────────────────────────────────────────────────────────────────────
 
-allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000")
-allowed_origins = [origin.strip() for origin in allowed_origins_str.split(",")]
+from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -39,20 +49,31 @@ app.add_middleware(
 
 # ─── Routers ──────────────────────────────────────────────────────────────────
 
-from app.routers import auth, superadmin, gastos, proveedores, servicios, usuarios, ordenes, b2b
+from fastapi import Depends
+from app.dependencies import require_suscripcion_activa
+from app.routers import auth, superadmin, gastos, proveedores, servicios, usuarios, ordenes, b2b, app_users, settings, reportes, suscripcion
+
+_sub = [Depends(require_suscripcion_activa)]
 
 app.include_router(auth.router, prefix="/api")
 app.include_router(superadmin.router, prefix="/api")
-app.include_router(gastos.router, prefix="/api/gastos", tags=["Gastos"])
-app.include_router(proveedores.router, prefix="/api/proveedores", tags=["Proveedores"])
-app.include_router(servicios.router, prefix="/api/servicios", tags=["Servicios"])
-app.include_router(usuarios.router, prefix="/api/usuarios", tags=["Usuarios"])
-app.include_router(ordenes.router, prefix="/api/ordenes", tags=["Órdenes B2C"])
-app.include_router(b2b.router, prefix="/api/b2b", tags=["Facturación B2B"])
+app.include_router(suscripcion.router, prefix="/api")
+app.include_router(gastos.router, prefix="/api/gastos", tags=["Gastos"], dependencies=_sub)
+app.include_router(proveedores.router, prefix="/api/proveedores", tags=["Proveedores"], dependencies=_sub)
+app.include_router(servicios.router, prefix="/api/servicios", tags=["Servicios"], dependencies=_sub)
+app.include_router(usuarios.router, prefix="/api/usuarios", tags=["Usuarios"], dependencies=_sub)
+app.include_router(reportes.router, prefix="/api/reportes", tags=["IA & Reportes"], dependencies=_sub)
+app.include_router(ordenes.router, prefix="/api/ordenes", tags=["Órdenes B2C"], dependencies=_sub)
+app.include_router(b2b.router, prefix="/api/b2b", tags=["Facturación B2B"], dependencies=_sub)
+app.include_router(app_users.router, prefix="/api")
+app.include_router(settings.router, prefix="/api/settings", tags=["Settings"], dependencies=_sub)
 
 
-# ─── Health Check ─────────────────────────────────────────────────────────────
+# ─── Static Files / Frontend ──────────────────────────────────────────────────
 
-@app.get("/")
-async def root():
-    return {"status": "ok", "version": "0.1.0"}
+from fastapi.staticfiles import StaticFiles
+
+# Montamos la carpeta dist del frontend. 
+# Importante: Esto debe ir al final para no interferir con las rutas de la API.
+if os.path.exists("frontend/dist"):
+    app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="static")

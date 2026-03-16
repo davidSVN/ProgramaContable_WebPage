@@ -11,7 +11,7 @@ class Tenant(Base):
     id = Column(Integer, primary_key=True, index=True)
     nombre = Column(String(100), nullable=False)
     ciudad = Column(String(100), nullable=True)
-    plan = Column(String(50), default="basic", nullable=False)  # "basic" | "premium"
+    plan = Column(String(50), default="none", nullable=False)  # "none" | "basic" | "premium"
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     max_usuarios = Column(Integer, default=5, nullable=False)
@@ -29,6 +29,8 @@ class AppUser(Base):
     username = Column(String(100), nullable=False)
     password_hash = Column(String(255), nullable=False)
     role = Column(String(20), nullable=False)  # "superadmin" | "admin" | "empleado"
+    cedula = Column(String(20), nullable=True)
+    last_login = Column(DateTime, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -56,12 +58,16 @@ class LaundryUser(Base):
     user_id = Column(Integer, primary_key=True, index=True)
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
     user_name = Column(String(100), nullable=False)
-    user_contact = Column(String(13), nullable=False)
+    user_contact = Column(String(50), nullable=False)  # Mantenemos como teléfono/contacto principal
+    email = Column(String(150), nullable=True)
+    nit = Column(String(50), nullable=True)  # Para instituciones B2B
     user_address = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     state = Column(Boolean, default=True, nullable=False)
     loyalty_level = Column(String(50))
     user_institute = Column(String(100), default="Usuario")
+    user_type = Column(String(20), default="B2C")  # "B2C" | "B2B"
+    payment_condition = Column(String(50), default="Contado")  # "Contado" | "Al crédito"
     saldo_a_favor = Column(Float, default=0.0, nullable=False)
     tenant = relationship("Tenant")
     orders = relationship("OrderHeader", back_populates="buyer")
@@ -103,10 +109,19 @@ class OrderHeader(Base):
     net_income_value = Column(Float, nullable=False, default=0.0)
     items_description = Column(Text, nullable=True)
     spent_per_order = Column(Float, default=0.0)
+    agency_cost = Column(Float, default=0.0)
     is_institute = Column(Boolean, default=False, nullable=False)
     consolidated_invoice_id = Column(Integer, ForeignKey("consolidated_invoices.id"), nullable=True)
     user_id = Column(Integer, ForeignKey("laundry_users.user_id"), nullable=False)
     user_name = Column(String(150))
+
+    # Tracking de entrega
+    delivered_at = Column(DateTime, nullable=True)
+    delivered_by = Column(String(100), nullable=True)
+    received_by_name = Column(String(100), nullable=True)
+    received_by_cedula = Column(String(20), nullable=True)
+    invoice_delivered = Column(Boolean, nullable=True)
+    delivery_signature = Column(Text, nullable=True)
     tenant = relationship("Tenant")
     buyer = relationship("LaundryUser", back_populates="orders")
     details = relationship("OrderDetail", back_populates="order", cascade="all, delete-orphan")
@@ -128,6 +143,7 @@ class OrderDetail(Base):
     is_agency = Column(Boolean, default=False, nullable=False)
     agency_done_date = Column(DateTime, nullable=True)
     spent_per_order = Column(Float, default=0.0)
+    description = Column(Text, nullable=True)
     tenant = relationship("Tenant")
     order = relationship("OrderHeader", back_populates="details")
 
