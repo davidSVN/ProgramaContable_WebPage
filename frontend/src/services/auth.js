@@ -1,4 +1,4 @@
-const API = 'http://localhost:8000';
+const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const TOKEN_KEY = 'washflow_token';
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
