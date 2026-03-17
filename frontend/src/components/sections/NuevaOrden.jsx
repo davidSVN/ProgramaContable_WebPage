@@ -1189,24 +1189,17 @@ export default function NuevaOrden() {
       addToast(printMsg, 'success', '');
 
       // Thermal print — fire and forget, silent fail on mobile/tablet
-      if (printerAvailable) {
-        const ordenParaImprimir = {
-          id: orderNum,
-          order_id: orderNum,
-          user_name: selectedClient.user_name,
-          user_contact: selectedClient.user_contact || '',
-          date: new Date().toISOString(),
-          servicios_data: items.map(i => ({
-            qty: i.quantity,
-            service_name: i.service_name,
-            unit_price: i.unit_price,
-            value: i.unit_price,
-          })),
-          total_amount: total,
-          balance_due: saldoPendiente,
-        };
-        printOrden(ordenParaImprimir, negocioConfig, 2).catch(() => {});
-      }
+      const ordenParaImprimir = {
+        ...result,
+        servicios_data: items.map(i => ({
+          qty: i.quantity,
+          service_name: i.service_name,
+          unit_price: i.unit_price,
+          value: i.unit_price,
+        })),
+        user_contact: selectedClient?.user_contact || '',
+      };
+      printOrden(ordenParaImprimir, negocioConfig, 2).catch(() => {});
 
       setSuccessFlash(true);
       setShowConfetti(true);

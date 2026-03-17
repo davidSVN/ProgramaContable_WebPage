@@ -47,12 +47,22 @@ export function buildPrintPayload(orden, negocioConfig, copias = 1) {
         year: 'numeric', hour: '2-digit', minute: '2-digit',
       }).toUpperCase();
 
-  const items = (orden.servicios_data || []).map(s => ({
-    cantidad: s.qty || s.quantity || 1,
-    detalle: s.name || s.service_name || '',
-    vlr_unit: s.value || s.unit_price || 0,
-    vlr_total: (s.qty || s.quantity || 1) * (s.value || s.unit_price || 0),
-  }));
+  let items = [];
+  if (orden.servicios_data && orden.servicios_data.length > 0) {
+    items = orden.servicios_data.map(s => ({
+      cantidad: s.qty || s.quantity || 1,
+      detalle: s.name || s.service_name || '',
+      vlr_unit: s.value || s.unit_price || 0,
+      vlr_total: (s.qty || s.quantity || 1) * (s.value || s.unit_price || 0),
+    }));
+  } else if (orden.items_description) {
+    items = [{
+      cantidad: 1,
+      detalle: orden.items_description.slice(0, 40),
+      vlr_unit: orden.order_value || orden.total_amount || 0,
+      vlr_total: orden.order_value || orden.total_amount || 0,
+    }];
+  }
 
   return {
     negocio: negocioConfig || {},

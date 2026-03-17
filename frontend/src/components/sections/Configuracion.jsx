@@ -1045,6 +1045,29 @@ const TEST_ORDEN = {
   total_amount: 16000, balance_due: 0,
 };
 
+const BAT_CONTENT =
+  '@echo off\r\n' +
+  'title WashFlow - Servicio de Impresion\r\n' +
+  'color 0A\r\n' +
+  'echo.\r\n' +
+  'echo  ================================================\r\n' +
+  'echo   WashFlow PrintBridge v1.0\r\n' +
+  'echo   Servicio de impresion termica\r\n' +
+  'echo  ================================================\r\n' +
+  'echo.\r\n' +
+  'echo  Verificando dependencias...\r\n' +
+  'pip install flask flask-cors python-escpos Pillow pywin32 -q\r\n' +
+  'echo.\r\n' +
+  'echo  Iniciando servidor de impresion...\r\n' +
+  'echo  Manten esta ventana ABIERTA mientras usas WashFlow\r\n' +
+  'echo  Para detener: presiona Ctrl+C\r\n' +
+  'echo.\r\n' +
+  'cd /d "%~dp0"\r\n' +
+  'python printbridge.py\r\n' +
+  'echo.\r\n' +
+  'echo  El servicio se detuvo. Presiona cualquier tecla para salir.\r\n' +
+  'pause > nul\r\n';
+
 function PrinterSection() {
   const [connected, setConnected]   = useState(false);
   const [checking, setChecking]     = useState(true);
@@ -1059,8 +1082,7 @@ function PrinterSection() {
   };
 
   const handleDownloadBat = () => {
-    const content = '@echo off\r\necho Iniciando WashFlow PrintBridge...\r\ncd /d "%~dp0"\r\npip install -r requirements_print.txt -q\r\npython printbridge.py\r\npause\r\n';
-    const blob = new Blob([content], { type: 'text/plain' });
+    const blob = new Blob([BAT_CONTENT], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -1069,24 +1091,35 @@ function PrinterSection() {
     URL.revokeObjectURL(url);
   };
 
-  useEffect(() => {
+  const checkConnection = async () => {
     setChecking(true);
-    isPrintAvailable().then(ok => {
-      setConnected(ok);
+    try {
+      const res = await fetch('http://localhost:8765/status', {
+        signal: AbortSignal.timeout(1000),
+      });
+      const data = await res.json();
+      setConnected(true);
+      setPrinters(data.available_printers || []);
+      setSelected(prev => prev || (data.available_printers?.[0] ?? data.default_printer ?? ''));
+    } catch {
+      setConnected(false);
+      setPrinters([]);
+    } finally {
       setChecking(false);
-      if (ok) {
-        getPrinters().then(list => {
-          setPrinters(list);
-          if (list.length > 0) setSelected(list[0]);
-        });
-      }
-    });
-  }, []);
+    }
+  };
+
+  // Poll every 5 seconds
+  useEffect(() => {
+    checkConnection();
+    const interval = setInterval(checkConnection, 5000);
+    return () => clearInterval(interval);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSelectPrinter = async (name) => {
     setSelected(name);
     const ok = await configurePrinter(name);
-    if (ok) showToast('✅ Impresora configurada');
+    if (ok) showToast(`✅ Impresora configurada: ${name}`);
   };
 
   const handleTest = async () => {
@@ -1095,11 +1128,29 @@ function PrinterSection() {
       const negocio = (() => {
         try { return JSON.parse(localStorage.getItem('washflow_negocio_config')) || TEST_NEGOCIO; } catch { return TEST_NEGOCIO; }
       })();
-      const result = await printOrden(TEST_ORDEN, negocio, 1);
-      if (result.success) {
-        showToast('✅ Recibo de prueba enviado');
+      const testPayload = {
+        negocio,
+        orden: {
+          numero: '0000',
+          cliente: 'CLIENTE DE PRUEBA',
+          telefono_cliente: '3100000000',
+          fecha: new Date().toLocaleString('es-CO').toUpperCase(),
+          items: [{ cantidad: 1, detalle: 'Recibo de prueba', vlr_unit: 0, vlr_total: 0 }],
+          subtotal: 0, abono: 0, total: 0,
+          estado_pago: 'PRUEBA DE IMPRESION',
+        },
+        copias: 1,
+      };
+      const res = await fetch('http://localhost:8765/print', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(testPayload),
+      });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        showToast('✅ Recibo de prueba impreso correctamente');
       } else {
-        showToast('❌ No se pudo conectar. ¿Está corriendo PrintBridge?', false);
+        showToast(`❌ Error: ${data.message}`, false);
       }
     } catch {
       showToast('❌ No se pudo conectar. ¿Está corriendo PrintBridge?', false);
@@ -1108,20 +1159,24 @@ function PrinterSection() {
     }
   };
 
+  const handleWindowsPrinters = () => {
+    window.open('ms-settings:printers', '_blank');
+  };
+
   return (
     <section className="ab-card pt-card">
       <div className="ab-card-header">
         <div className="ab-card-header__left">
           <h2 className="ab-card-title">
             <span className="ab-card-title__icon" aria-hidden="true">🖨️</span>
-            Configuración de Impresora
+            Impresora Térmica
           </h2>
           <p className="ab-card-subtitle">Impresora térmica local (USB) para recibos</p>
         </div>
         <div className="pt-status-badge">
           {checking
             ? <span className="pt-dot pt-dot--checking" />
-            : <span className={`pt-dot${connected ? ' pt-dot--on' : ' pt-dot--off'}`} />
+            : <span className={`pt-dot${connected ? ' pt-dot--on pt-dot--pulse' : ' pt-dot--off'}`} />
           }
           <span className="pt-status-label">
             {checking ? 'Verificando...' : connected ? 'Conectada' : 'Sin conexión'}
@@ -1138,6 +1193,7 @@ function PrinterSection() {
       <div className="pt-body">
         {connected ? (
           <>
+            <p className="pt-online-label">PrintBridge activo en localhost:8765</p>
             {printers.length > 0 && (
               <div className="pt-field">
                 <label className="pn-label">Impresora activa</label>
@@ -1158,23 +1214,34 @@ function PrinterSection() {
               disabled={testing}
             >
               {testing
-                ? <><span className="ab-save-spinner" /> Imprimiendo prueba...</>
-                : '🧾 Probar impresión'
+                ? <><span className="ab-save-spinner" /> Imprimiendo...</>
+                : '🖨️ Imprimir recibo de prueba'
               }
             </button>
+            <button className="pt-test-btn pt-test-btn--secondary" onClick={handleWindowsPrinters}>
+              ⚙️ Abrir configuración de Windows
+            </button>
+            <p className="pt-windows-hint">Aquí puedes instalar o configurar los drivers de tu impresora térmica</p>
           </>
         ) : (
           <div className="pt-offline-msg">
-            <p>La impresora solo funciona en el PC con <strong>PrintBridge</strong> activo. En celular/tablet se omite automáticamente.</p>
+            <p className="pt-offline-msg__title">PrintBridge no está corriendo</p>
+            <p className="pt-offline-msg__steps">Para activar la impresión:</p>
+            <ol className="pt-offline-msg__list">
+              <li>Abre la carpeta <strong>tools</strong> del proyecto</li>
+              <li>Haz doble clic en <strong>START_IMPRESORA.bat</strong></li>
+              <li>Mantén esa ventana abierta</li>
+            </ol>
+            <div className="pt-offline-actions">
+              <button className="pt-download-btn" onClick={handleDownloadBat}>
+                📥 Descargar START_IMPRESORA.bat
+              </button>
+              <button className="pt-download-btn pt-download-btn--verify" onClick={checkConnection} disabled={checking}>
+                🔄 Verificar conexión
+              </button>
+            </div>
           </div>
         )}
-
-        <div className="pt-download-row">
-          <span className="pt-download-label">📥 ¿No tienes PrintBridge?</span>
-          <button className="pt-download-btn" onClick={handleDownloadBat}>
-            Descargar START_IMPRESORA.bat
-          </button>
-        </div>
       </div>
     </section>
   );

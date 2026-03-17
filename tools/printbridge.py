@@ -165,6 +165,19 @@ def configure():
 
 
 if __name__ == "__main__":
-    print("WashFlow PrintBridge corriendo en http://localhost:8765")
-    print("Manten esta ventana abierta mientras usas WashFlow")
+    print("=" * 50)
+    print("  WashFlow PrintBridge v1.0")
+    print("  Servidor de impresion termica")
+    print("=" * 50)
+    try:
+        default = win32print.GetDefaultPrinter()
+        print(f"\n  Impresora detectada: {default}")
+        print(f"  Servidor listo en: http://localhost:8765")
+        print("\n  MANTEN ESTA VENTANA ABIERTA")
+        print("  Para detener: Ctrl+C")
+        print("=" * 50 + "\n")
+    except Exception as e:
+        print(f"\n  ERROR: No se detecto impresora: {e}")
+        print("  Verifica que la impresora este conectada")
+        print("=" * 50 + "\n")
     app.run(host="127.0.0.1", port=8765, debug=False)

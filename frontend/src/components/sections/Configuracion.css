@@ -1514,6 +1514,65 @@
   background: rgba(255,107,43,0.04);
 }
 
+.pt-download-btn--verify {
+  background: var(--ds-content-bg, #F7F5F0);
+}
+
+.pt-dot--pulse {
+  animation: pt-pulse-green 2s infinite;
+}
+
+@keyframes pt-pulse-green {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(43,160,90,0.4); }
+  50%       { box-shadow: 0 0 0 5px rgba(43,160,90,0); }
+}
+
+.pt-online-label {
+  font-size: 0.82rem;
+  color: #2BA05A;
+  font-weight: 600;
+  margin: 0;
+}
+
+.pt-test-btn--secondary {
+  border-color: var(--ds-card-border, #E8E3D8);
+  color: var(--ds-text-secondary, #6B6560);
+}
+
+.pt-windows-hint {
+  font-size: 0.78rem;
+  color: var(--ds-text-secondary, #6B6560);
+  margin: -8px 0 0;
+  line-height: 1.4;
+}
+
+.pt-offline-msg__title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ds-text-primary, #1A1A1A);
+  margin: 0 0 8px;
+}
+
+.pt-offline-msg__steps {
+  font-size: 0.82rem;
+  color: var(--ds-text-secondary, #6B6560);
+  margin: 0 0 4px;
+}
+
+.pt-offline-msg__list {
+  font-size: 0.82rem;
+  color: var(--ds-text-secondary, #6B6560);
+  margin: 0 0 12px;
+  padding-left: 18px;
+  line-height: 1.8;
+}
+
+.pt-offline-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 /* ── Print spinner in HistorialOrdenes ── */
 .ho-action-btn--print { color: var(--ds-text-secondary, #6B6560); }
 .ho-action-btn--printing { opacity: 0.6; cursor: not-allowed; }
