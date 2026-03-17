@@ -58,3 +58,8 @@ export const getOportunidadesDescuento = () =>
 
 export const recalcularML = () =>
   api.post('/reportes/ml/recalcular');
+
+export const getResumenDia = (fecha = null) => {
+  const params = fecha ? `?fecha=${fecha}` : '';
+  return api.get(`/reportes/resumen-dia${params}`);
+};

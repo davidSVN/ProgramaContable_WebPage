@@ -8,7 +8,7 @@ import {
   getFinanciero, getOrdenesResumen, getServiciosRanking,
   getClientesRiesgo, getSegmentosRFM, getPerfilesML,
   getRetencion, getForecastDemanda, getOportunidadesDescuento,
-  recalcularML, getPeriodDates,
+  recalcularML, getPeriodDates, getResumenDia,
 } from '../../services/reportes';
 import './IAReportes.css';
 
@@ -309,6 +309,364 @@ const STATUS_COLORS = {
   'Cancelada':   '#C62828',
 };
 
+// ── ResumenDia constants ────────────────────────────────────────────────────────
+
+const DIAS_SHORT = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+
+const fmtFechaDia = (dateStr) => {
+  if (!dateStr) return '';
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  return `${DIAS_SHORT[dt.getDay()]} ${d} ${MESES[m - 1]} ${y}`;
+};
+
+const METODO_COLORS = {
+  'Efectivo':      '#4CAF50',
+  'Transferencia': '#185FA5',
+  'Nequi':         '#7F77DD',
+  'Daviplata':     '#FF6B2B',
+  'Tarjeta':       '#1D9E75',
+};
+
+const ESTADO_PAGO_CFG = {
+  'Pagada': { bg: '#E8F5E9', color: '#2E7D32' },
+  'Debe':   { bg: '#FFEBEE', color: '#C62828' },
+};
+
+const ESTADO_ORDEN_CFG = {
+  'En progreso': { bg: '#E3F2FD', color: '#185FA5' },
+  'Lista':       { bg: '#E8F5E9', color: '#2E7D32' },
+  'Entregada':   { bg: '#EDE7F6', color: '#512DA8' },
+  'Cancelada':   { bg: '#FFEBEE', color: '#C62828' },
+};
+
+const CATEGORIA_COLORS = {
+  'Servicios':          '#185FA5',
+  'Nómina':             '#7F77DD',
+  'Insumos':            '#4CAF50',
+  'Arriendo':           '#FF6B2B',
+  'Servicios Públicos': '#F57F17',
+  'Mantenimiento':      '#00897B',
+};
+
+// ── KpiCard ─────────────────────────────────────────────────────────────────────
+
+function KpiCard({ icon, title, value, subtitle, borderColor, valueColor, isCurrency, loading }) {
+  const animated = useCountUp(value ?? 0, 600);
+  const display  = isCurrency ? fmtCOP(animated) : Math.round(animated).toLocaleString('es-CO');
+  return (
+    <div className="rd-kpi-card" style={{ borderLeftColor: borderColor }}>
+      <div className="rd-kpi-icon">{icon}</div>
+      {loading
+        ? <Skel w="80%" h={28} r={6} style={{ marginBottom: 4 }} />
+        : <div className="rd-kpi-value" style={{ color: valueColor || '#1A1A1A' }}>{display}</div>}
+      <div className="rd-kpi-title">{title}</div>
+      {loading
+        ? <Skel w="60%" h={13} r={4} />
+        : <div className="rd-kpi-sub">{subtitle}</div>}
+    </div>
+  );
+}
+
+// ── ResumenDia ──────────────────────────────────────────────────────────────────
+
+function ResumenDia({ data, loading, fechaDia, onVolver, onDiaAnterior, onDiaSiguiente }) {
+  const todayCO = new Date().toISOString().split('T')[0];
+  const isToday = fechaDia >= todayCO;
+
+  const r               = data?.resumen ?? {};
+  const ordenes         = data?.ordenes ?? [];
+  const egresos         = data?.egresos ?? [];
+  const serviciosDia    = data?.servicios_del_dia ?? [];
+  const serviciosAgencia = data?.servicios_agencia ?? [];
+
+  const pagosData = Object.entries(data?.ingresos_por_metodo ?? {}).map(([metodo, total]) => ({
+    metodo,
+    total: Number(total),
+  }));
+
+  const svcChartH = Math.max(200, serviciosDia.length * 36);
+
+  return (
+    <div className="rd-view ia-reveal">
+
+      {/* Sub-header */}
+      <div className="rd-subheader">
+        <button className="rd-volver" onClick={onVolver}>← Volver a Reportes</button>
+        <div className="rd-subheader__center">
+          <span className="rd-title">📊 Resumen del Día</span>
+        </div>
+        <div className="rd-date-nav">
+          <button className="rd-nav-btn" onClick={onDiaAnterior}>←</button>
+          <span className="rd-date-label">{fmtFechaDia(fechaDia)}</span>
+          <button className="rd-nav-btn" onClick={onDiaSiguiente} disabled={isToday}>→</button>
+        </div>
+      </div>
+
+      {/* ── KPI Row ─── */}
+      <div className="rd-kpi-row">
+        <KpiCard
+          icon="📦" title="Órdenes del Día"
+          value={r.total_ordenes}
+          subtitle={loading ? '…' : `${r.ordenes_pagadas ?? 0} pagadas · ${r.ordenes_debe ?? 0} deben`}
+          borderColor="#185FA5" loading={loading}
+        />
+        <KpiCard
+          icon="💰" title="Total Facturado"
+          value={r.total_ingresos} subtitle="valor bruto del día"
+          borderColor="#4CAF50" isCurrency loading={loading}
+        />
+        <KpiCard
+          icon="✅" title="Total Cobrado"
+          value={r.total_cobrado} subtitle="dinero recibido hoy"
+          borderColor="#FF6B2B" valueColor="#FF6B2B"
+          isCurrency loading={loading}
+        />
+        <KpiCard
+          icon="⏳" title="Por Cobrar"
+          value={r.total_debe} subtitle="pendiente de cobro"
+          borderColor="#F57F17"
+          valueColor={(r.total_debe ?? 0) > 0 ? '#C62828' : '#2E7D32'}
+          isCurrency loading={loading}
+        />
+        <KpiCard
+          icon="📤" title="Egresos"
+          value={r.total_egresos} subtitle="gastos registrados hoy"
+          borderColor="#C62828" valueColor="#C62828"
+          isCurrency loading={loading}
+        />
+        <KpiCard
+          icon="📈" title="Income Neto"
+          value={r.income_neto} subtitle="cobrado menos egresos"
+          borderColor={(r.income_neto ?? 0) >= 0 ? '#4CAF50' : '#C62828'}
+          valueColor={(r.income_neto ?? 0) >= 0 ? '#2E7D32' : '#C62828'}
+          isCurrency loading={loading}
+        />
+      </div>
+
+      {/* ── Row 2: Payments + Expenses ─── */}
+      <div className="rd-two-col">
+
+        {/* Payment methods */}
+        <div className="ia-card">
+          <div className="ia-card-title">💳 Distribución de Ingresos por Método de Pago</div>
+          {loading ? (
+            <Skel h={240} r={8} />
+          ) : pagosData.length === 0 ? (
+            <div className="ia-empty-chart">Sin ingresos registrados hoy</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={pagosData} margin={{ top: 24, right: 20, bottom: 4, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#E8E3D8" vertical={false} />
+                <XAxis dataKey="metodo" tick={{ fontSize: 12, fill: '#6B6860' }} axisLine={false} tickLine={false} />
+                <YAxis
+                  tick={{ fontSize: 10, fill: '#888780' }} axisLine={false} tickLine={false}
+                  tickFormatter={n => '$' + (n / 1000).toFixed(0) + 'k'}
+                />
+                <Tooltip formatter={(v) => [fmtCOP(v), 'Total']} />
+                <Bar
+                  dataKey="total" name="Total"
+                  radius={[4, 4, 0, 0]}
+                  label={{ position: 'top', formatter: v => fmtCOP(v), fontSize: 10, fill: '#6B6860' }}
+                >
+                  {pagosData.map((entry) => (
+                    <Cell key={entry.metodo} fill={METODO_COLORS[entry.metodo] || '#888780'} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* Expenses */}
+        <div className="ia-card">
+          <div className="ia-card-title">📤 Egresos del Día</div>
+          {loading ? (
+            <div className="ia-skel-rows">{[...Array(3)].map((_, i) => <Skel key={i} h={56} r={8} />)}</div>
+          ) : egresos.length === 0 ? (
+            <div className="ia-empty-state">
+              <span>✅</span>
+              <div>Sin egresos registrados hoy</div>
+            </div>
+          ) : (
+            <>
+              <div className="rd-egresos-list">
+                {egresos.map((g, i) => {
+                  const cat = g.categoria || '';
+                  const catColor = CATEGORIA_COLORS[cat] || '#888780';
+                  return (
+                    <div key={i} className="rd-egreso-item">
+                      <div className="rd-egreso-row">
+                        <span className="rd-egreso-nombre">{g.nombre}</span>
+                        <span className="rd-egreso-valor">{fmtCOP(g.valor)}</span>
+                      </div>
+                      <div className="rd-egreso-pills">
+                        <span className="rd-pill" style={{ background: catColor + '22', color: catColor }}>{cat}</span>
+                        <span className="rd-pill rd-pill--metodo">{g.metodo}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="rd-egresos-total">
+                Total: <strong style={{ color: '#C62828' }}>
+                  {fmtCOP(egresos.reduce((s, g) => s + (g.valor || 0), 0))}
+                </strong>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ── Orders table ─── */}
+      <div className="ia-card">
+        <div className="ia-card-header">
+          <div className="ia-card-title">
+            📋 Órdenes del Día
+            {!loading && <span className="rd-badge">{ordenes.length}</span>}
+          </div>
+        </div>
+        {loading ? (
+          <div className="ia-skel-rows">{[...Array(5)].map((_, i) => <Skel key={i} h={44} r={8} />)}</div>
+        ) : ordenes.length === 0 ? (
+          <div className="ia-empty-state">
+            <span>🎉</span>
+            <div>Sin órdenes registradas hoy</div>
+          </div>
+        ) : (
+          <div className="ia-table-scroll">
+            <table className="ia-table">
+              <thead>
+                <tr>
+                  <th>#Orden</th>
+                  <th>Cliente</th>
+                  <th>Descripción</th>
+                  <th>Total</th>
+                  <th>Cobrado</th>
+                  <th>Debe</th>
+                  <th>Estado</th>
+                  <th>Pago</th>
+                  <th>Tipo</th>
+                  <th>Agencia</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ordenes.map((o) => {
+                  const eCfg = ESTADO_ORDEN_CFG[o.estado] || { bg: '#F5F5F5', color: '#888780' };
+                  const pCfg = ESTADO_PAGO_CFG[o.estado_pago] || { bg: '#F5F5F5', color: '#888780' };
+                  return (
+                    <tr key={o.id} className="rd-orden-row ia-tr-hover">
+                      <td className="rd-orden-id">#{o.id}</td>
+                      <td className="ia-td-bold">{o.cliente}</td>
+                      <td className="ia-td-muted">{truncate(o.descripcion || '', 35)}</td>
+                      <td>{fmtCOP(o.total)}</td>
+                      <td>{fmtCOP(o.cobrado)}</td>
+                      <td className={o.debe > 0 ? 'rd-debe-red' : 'rd-debe-ok'}>
+                        {o.debe > 0 ? fmtCOP(o.debe) : '—'}
+                      </td>
+                      <td><span className="rd-pill" style={{ background: eCfg.bg, color: eCfg.color }}>{o.estado}</span></td>
+                      <td><span className="rd-pill" style={{ background: pCfg.bg, color: pCfg.color }}>{o.estado_pago}</span></td>
+                      <td>
+                        {o.es_instituto
+                          ? <span className="rd-pill rd-pill--b2b">B2B</span>
+                          : <span className="rd-pill rd-pill--user">Usuario</span>}
+                      </td>
+                      <td>
+                        {o.tiene_agencia && <span className="rd-pill rd-pill--agencia">Agencia ↗</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ── Row 4: Services + Agency ─── */}
+      <div className="rd-bottom-row">
+
+        {/* Services chart */}
+        <div className="ia-card">
+          <div className="ia-card-title">🧺 Servicios del Día</div>
+          {loading ? (
+            <Skel h={200} r={8} />
+          ) : serviciosDia.length === 0 ? (
+            <div className="ia-empty-chart">Sin servicios registrados</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={svcChartH}>
+              <BarChart
+                data={serviciosDia.map(s => ({ ...s, nombre_corto: truncate(s.nombre, 20) }))}
+                layout="vertical"
+                margin={{ top: 4, right: 50, bottom: 4, left: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#E8E3D8" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 10, fill: '#888780' }} axisLine={false} tickLine={false} />
+                <YAxis
+                  type="category" dataKey="nombre_corto" width={140}
+                  tick={{ fontSize: 11, fill: '#6B6860' }} axisLine={false} tickLine={false}
+                />
+                <Tooltip formatter={v => [v, 'Cantidad']} />
+                <Bar
+                  dataKey="cantidad" fill="rgba(255,107,43,0.7)"
+                  radius={[0, 4, 4, 0]}
+                  label={{ position: 'right', formatter: v => v, fontSize: 11, fill: '#6B6860' }}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* Agency services */}
+        <div className="ia-card">
+          <div className="ia-card-header">
+            <div className="ia-card-title">
+              🏭 Servicios en Agencia
+              {!loading && serviciosAgencia.length > 0 && (
+                <span className="rd-badge rd-badge--orange">{serviciosAgencia.length}</span>
+              )}
+            </div>
+          </div>
+          {loading ? (
+            <div className="ia-skel-rows">{[...Array(3)].map((_, i) => <Skel key={i} h={40} r={8} />)}</div>
+          ) : serviciosAgencia.length === 0 ? (
+            <div className="ia-empty-state">
+              <span>🏭</span>
+              <div>Sin servicios en agencia hoy</div>
+              <div className="ia-card-sub">Los servicios de agencia aparecen aquí</div>
+            </div>
+          ) : (
+            <div className="ia-table-scroll">
+              <table className="ia-table">
+                <thead>
+                  <tr>
+                    <th>Servicio</th>
+                    <th>Cliente</th>
+                    <th>Cant.</th>
+                    <th>Valor</th>
+                    <th>Orden</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {serviciosAgencia.map((s, i) => (
+                    <tr key={i} className="ia-tr-hover rd-agencia-row">
+                      <td className="ia-td-bold">{s.servicio}</td>
+                      <td className="ia-td-muted">{s.cliente}</td>
+                      <td className="ia-td-center">{s.cantidad}</td>
+                      <td style={{ color: '#FF6B2B', fontWeight: 600 }}>{fmtCOP(s.valor)}</td>
+                      <td className="rd-orden-id">#{s.orden_id}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export default function IAReportes() {
@@ -345,6 +703,12 @@ export default function IAReportes() {
   const [oportunidades, setOportunidades] = useState([]);
   const [gestionados, setGestionados]     = useState(new Set());
   const [loadOport, setLoadOport]         = useState(true);
+
+  // Resumen del Día
+  const [vistaActiva, setVistaActiva] = useState('reportes');
+  const [fechaDia,    setFechaDia]    = useState(() => new Date().toISOString().split('T')[0]);
+  const [resumenDia,  setResumenDia]  = useState(null);
+  const [loadingDia,  setLoadingDia]  = useState(false);
 
   const { toasts, add: addToast } = useToast();
 
@@ -405,6 +769,30 @@ export default function IAReportes() {
     prevPeriodo.current = periodo;
     fetchBasic(periodo);
   }, [periodo]); // eslint-disable-line
+
+  // ── Resumen del Día fetch ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (vistaActiva !== 'resumen-dia') return;
+    setLoadingDia(true);
+    getResumenDia(fechaDia)
+      .then(setResumenDia)
+      .catch(() => addToast('Error al cargar resumen del día', 'error'))
+      .finally(() => setLoadingDia(false));
+  }, [vistaActiva, fechaDia]); // eslint-disable-line
+
+  const irDiaAnterior = () => {
+    const d = new Date(fechaDia + 'T12:00:00');
+    d.setDate(d.getDate() - 1);
+    setFechaDia(d.toISOString().split('T')[0]);
+  };
+
+  const irDiaSiguiente = () => {
+    const hoy = new Date().toISOString().split('T')[0];
+    const d   = new Date(fechaDia + 'T12:00:00');
+    d.setDate(d.getDate() + 1);
+    const next = d.toISOString().split('T')[0];
+    if (next <= hoy) setFechaDia(next);
+  };
 
   // ── Sync ───────────────────────────────────────────────────────────────────
   const handleSync = async () => {
@@ -473,6 +861,9 @@ export default function IAReportes() {
               </button>
             ))}
           </div>
+          <button className="rd-dia-btn" onClick={() => setVistaActiva('resumen-dia')}>
+            📊 Resumen del Día
+          </button>
           <button className="ia-sync-btn" onClick={handleSync} disabled={syncing}>
             <span className={`ia-sync-icon ${syncing ? 'spinning' : ''}`}>↺</span>
             {syncing ? 'Recalculando...' : 'Sincronizar'}
@@ -480,6 +871,18 @@ export default function IAReportes() {
         </div>
       </div>
 
+      {vistaActiva === 'resumen-dia' ? (
+        <ResumenDia
+          data={resumenDia}
+          loading={loadingDia}
+          fechaDia={fechaDia}
+          onVolver={() => setVistaActiva('reportes')}
+          onDiaAnterior={irDiaAnterior}
+          onDiaSiguiente={irDiaSiguiente}
+          addToast={addToast}
+        />
+      ) : (
+        <>
       {/* ── SECCIÓN 1: INCOME NETO ────────────────────────────────────── */}
       <div className="ia-card ia-reveal" style={{ animationDelay: '0ms' }}>
         <div className="ia-card-title">💰 Income Neto</div>
@@ -908,6 +1311,8 @@ export default function IAReportes() {
           )}
         </div>
       </PremiumGate>
+        </>
+      )}
 
     </div>
   );

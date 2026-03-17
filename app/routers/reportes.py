@@ -2,12 +2,12 @@ from datetime import date, datetime, timedelta
 from typing import List, Optional
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func
+from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_user, require_premium
-from app.models import AppUser, OrderHeader, OrderDetail, SpentBusiness, LaundryUser
+from app.models import AppUser, OrderHeader, OrderDetail, OrderPayment, SpentBusiness, LaundryUser
 from app.services import ml_engine
 
 router = APIRouter()
@@ -461,3 +461,142 @@ async def recalcular_ml(
     engine = ml_engine.get_engine(current_user.tenant_id)
     engine._cache_ts = None
     return {"status": "ok", "recalculado_at": datetime.utcnow()}
+
+
+# ── RESUMEN DEL DÍA ───────────────────────────────────────────────────────────
+
+@router.get("/resumen-dia", summary="Resumen completo del día")
+async def resumen_dia(
+    fecha: Optional[date] = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    current_user: AppUser = Depends(get_current_user),
+):
+    """Resumen completo del día: órdenes, pagos, egresos y servicios."""
+    import pytz
+    from collections import Counter
+
+    tz_colombia = pytz.timezone("America/Bogota")
+    hoy = fecha or datetime.now(tz_colombia).date()
+    inicio = datetime.combine(hoy, datetime.min.time())
+    fin    = datetime.combine(hoy, datetime.max.time())
+    tid    = current_user.tenant_id
+
+    # ── Órdenes del día ──────────────────────────────────────────────────────
+    res_ordenes = await db.execute(
+        select(OrderHeader).where(
+            and_(
+                OrderHeader.tenant_id == tid,
+                OrderHeader.date >= inicio,
+                OrderHeader.date <= fin,
+            )
+        )
+    )
+    ordenes = res_ordenes.scalars().all()
+    order_ids = [o.id for o in ordenes]
+
+    # ── Pagos del día ────────────────────────────────────────────────────────
+    pagos_por_metodo = {}
+    if order_ids:
+        res_pagos = await db.execute(
+            select(
+                OrderPayment.payment_method,
+                func.sum(OrderPayment.amount).label("total")
+            ).where(
+                and_(
+                    OrderPayment.tenant_id == tid,
+                    OrderPayment.order_id.in_(order_ids),
+                )
+            ).group_by(OrderPayment.payment_method)
+        )
+        pagos_por_metodo = {row.payment_method: float(row.total or 0) for row in res_pagos}
+
+    # ── Egresos del día ──────────────────────────────────────────────────────
+    res_gastos = await db.execute(
+        select(SpentBusiness).where(
+            and_(
+                SpentBusiness.tenant_id == tid,
+                SpentBusiness.spent_date >= inicio,
+                SpentBusiness.spent_date <= fin,
+            )
+        )
+    )
+    gastos = res_gastos.scalars().all()
+
+    # ── Detalles de órdenes del día ──────────────────────────────────────────
+    detalles = []
+    if order_ids:
+        res_detalles = await db.execute(
+            select(OrderDetail).where(
+                and_(
+                    OrderDetail.tenant_id == tid,
+                    OrderDetail.order_id.in_(order_ids),
+                )
+            )
+        )
+        detalles = res_detalles.scalars().all()
+
+    # ── Cálculos ─────────────────────────────────────────────────────────────
+    total_ingresos = sum(float(o.total_amount or 0) for o in ordenes)
+    total_cobrado  = sum(float(o.total_amount or 0) - float(o.balance_due or 0) for o in ordenes)
+    total_debe     = sum(float(o.balance_due or 0) for o in ordenes)
+    total_egresos  = sum(float(g.spent_value or 0) for g in gastos)
+    income_neto    = total_cobrado - total_egresos
+
+    servicios_count = Counter(d.service_name for d in detalles if d.service_name)
+    servicios_agencia = [d for d in detalles if getattr(d, "is_agency", False)]
+
+    return {
+        "fecha": str(hoy),
+        "resumen": {
+            "total_ordenes":      len(ordenes),
+            "total_ingresos":     round(total_ingresos, 0),
+            "total_cobrado":      round(total_cobrado, 0),
+            "total_debe":         round(total_debe, 0),
+            "total_egresos":      round(total_egresos, 0),
+            "income_neto":        round(income_neto, 0),
+            "ordenes_pagadas":    sum(1 for o in ordenes if o.is_paid),
+            "ordenes_debe":       sum(1 for o in ordenes if not o.is_paid and (o.balance_due or 0) > 0),
+            "ordenes_entregadas": sum(1 for o in ordenes if o.order_status == "Entregada"),
+            "ordenes_agencia":    sum(1 for o in ordenes if (o.agency_cost or 0) > 0),
+            "ordenes_instituto":  sum(1 for o in ordenes if getattr(o, "is_institute", False)),
+        },
+        "ingresos_por_metodo": pagos_por_metodo,
+        "egresos": [
+            {
+                "nombre":    g.spent_general_name,
+                "categoria": g.spent_category,
+                "valor":     float(g.spent_value or 0),
+                "metodo":    g.spent_payment_method,
+            }
+            for g in gastos
+        ],
+        "ordenes": [
+            {
+                "id":          o.id,
+                "cliente":     o.user_name,
+                "total":       float(o.total_amount or 0),
+                "cobrado":     float(o.total_amount or 0) - float(o.balance_due or 0),
+                "debe":        float(o.balance_due or 0),
+                "estado":      o.order_status,
+                "estado_pago": "Pagada" if o.is_paid else "Debe",
+                "es_instituto":   getattr(o, "is_institute", False),
+                "tiene_agencia":  bool(o.agency_cost and o.agency_cost > 0),
+                "descripcion":    o.items_description,
+            }
+            for o in ordenes
+        ],
+        "servicios_del_dia": [
+            {"nombre": nombre, "cantidad": cant}
+            for nombre, cant in servicios_count.most_common(20)
+        ],
+        "servicios_agencia": [
+            {
+                "servicio":  d.service_name,
+                "cantidad":  d.quantity,
+                "orden_id":  d.order_id,
+                "cliente":   getattr(d, "user_name", ""),
+                "valor":     float(d.total_item_price or 0),
+            }
+            for d in servicios_agencia
+        ],
+    }
