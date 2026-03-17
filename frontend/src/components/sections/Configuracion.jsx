@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import './Configuracion.css';
 import { api } from '../../services/api';
 import { getSuscripcionInfo, updatePlan } from '../../services/suscripcion';
+import { getNegocioConfig, updateNegocioConfig } from '../../services/configuracion';
+import { isPrintAvailable, getPrinters, configurePrinter, printOrden } from '../../services/print';
 
 /* ── Expand utility ─────────────────────────────────────── */
 const expandText = (text, abbreviations) =>
@@ -769,6 +771,415 @@ function BusinessInfoSection() {
   );
 }
 
+/* ── PerfilNegocioSection ────────────────────────────────── */
+const LS_KEY = 'washflow_negocio_config';
+
+function PerfilNegocioSection() {
+  const [config, setConfig] = useState({
+    nombre: '', slogan: '', direccion: '',
+    telefono: '', nit: '', mensaje_pie: '¡GRACIAS POR TU PREFERENCIA!',
+    logo_base64: null,
+  });
+  const [saving, setSaving]         = useState(false);
+  const [dirty, setDirty]           = useState(false);
+  const [toast, setToast]           = useState(null);
+  const [logoFilename, setLogoFilename] = useState(null);
+  const fileInputRef = useRef(null);
+
+  /* Load: localStorage first (instant), then API (fresh) */
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem(LS_KEY);
+      if (cached) setConfig(JSON.parse(cached));
+    } catch {}
+
+    getNegocioConfig()
+      .then(data => {
+        setConfig(data);
+        localStorage.setItem(LS_KEY, JSON.stringify(data));
+      })
+      .catch(() => {});
+  }, []);
+
+  const update = (key, val) => {
+    setConfig(prev => ({ ...prev, [key]: val }));
+    setDirty(true);
+  };
+
+  const showToast = (msg, ok = true) => {
+    setToast({ msg, ok });
+    setTimeout(() => setToast(null), 3500);
+  };
+
+  const handleLogoChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      showToast('❌ Solo se aceptan imágenes PNG, JPEG o WebP', false);
+      e.target.value = '';
+      return;
+    }
+    if (file.size > 500 * 1024) {
+      showToast('❌ El logo es muy grande. Máximo 500KB.', false);
+      e.target.value = '';
+      return;
+    }
+    setLogoFilename(file.name);
+    const reader = new FileReader();
+    reader.onload = (ev) => update('logo_base64', ev.target.result);
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleSave = async () => {
+    if (!dirty || saving) return;
+    setSaving(true);
+    try {
+      await updateNegocioConfig(config);
+      localStorage.setItem(LS_KEY, JSON.stringify(config));
+      setDirty(false);
+      showToast('✅ Perfil del negocio guardado');
+    } catch (err) {
+      const msg = err.message || '';
+      if (msg.includes('500KB') || msg.toLowerCase().includes('logo')) {
+        showToast('❌ Logo demasiado grande. Máximo 500KB', false);
+      } else {
+        showToast('❌ ' + (msg || 'Error al guardar'), false);
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section className="ab-card pn-card">
+      {/* Header */}
+      <div className="ab-card-header">
+        <div className="ab-card-header__left">
+          <h2 className="ab-card-title">
+            <span className="ab-card-title__icon" aria-hidden="true">🏪</span>
+            Perfil del Negocio
+            {dirty && <span className="ab-dirty-dot" title="Cambios sin guardar" />}
+          </h2>
+          <p className="ab-card-subtitle">Información que aparece en los recibos impresos</p>
+        </div>
+        <div className="ab-card-header__right">
+          {dirty && <span className="ab-unsaved-badge">Cambios sin guardar</span>}
+          <button
+            className={`ab-save-btn${dirty ? ' ab-save-btn--dirty' : ''}`}
+            onClick={handleSave}
+            disabled={!dirty || saving}
+            aria-label="Guardar perfil del negocio"
+          >
+            {saving
+              ? <><span className="ab-save-spinner" aria-hidden="true" /> Guardando...</>
+              : '💾 Guardar'
+            }
+          </button>
+        </div>
+      </div>
+
+      {/* Toast */}
+      {toast && (
+        <div className={`ab-toast ${toast.ok ? 'ab-toast--ok' : 'ab-toast--err'}`} style={{ margin: '10px 24px 0' }}>
+          {toast.msg}
+        </div>
+      )}
+
+      {/* Body: form + receipt preview */}
+      <div className="pn-body">
+
+        {/* ── Form ── */}
+        <div className="pn-form">
+
+          {/* Top row: logo + right fields */}
+          <div className="pn-top-row">
+
+            {/* Logo box */}
+            <div className="pn-logo-area">
+              <div
+                className={`pn-logo-box${config.logo_base64 ? ' pn-logo-box--filled' : ''}`}
+                onClick={() => fileInputRef.current?.click()}
+                title="Clic para subir logo"
+                role="button"
+                tabIndex={0}
+                onKeyDown={e => e.key === 'Enter' && fileInputRef.current?.click()}
+              >
+                {config.logo_base64
+                  ? <img src={config.logo_base64} alt="Logo del negocio" className="pn-logo-img" />
+                  : <span className="pn-logo-placeholder">Sin logo</span>
+                }
+              </div>
+              <div className="pn-logo-btns">
+                <button className="pn-logo-btn" onClick={() => fileInputRef.current?.click()}>
+                  📁 Subir logo
+                </button>
+                {config.logo_base64 && (
+                  <button
+                    className="pn-logo-btn pn-logo-btn--remove"
+                    onClick={() => { update('logo_base64', null); setLogoFilename(null); }}
+                  >
+                    🗑 Quitar
+                  </button>
+                )}
+                {logoFilename && <span className="pn-logo-filename">{logoFilename}</span>}
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                style={{ display: 'none' }}
+                onChange={handleLogoChange}
+                aria-label="Subir logo del negocio"
+              />
+            </div>
+
+            {/* Right: nombre, slogan, nit */}
+            <div className="pn-top-fields">
+              <div className="pn-field">
+                <label className="pn-label" htmlFor="pn-nombre">Nombre del negocio *</label>
+                <input
+                  id="pn-nombre"
+                  className="pn-input"
+                  type="text"
+                  value={config.nombre}
+                  onChange={e => update('nombre', e.target.value)}
+                  placeholder="Ej: LAVALATU"
+                />
+              </div>
+              <div className="pn-field">
+                <label className="pn-label" htmlFor="pn-slogan">Slogan</label>
+                <input
+                  id="pn-slogan"
+                  className="pn-input"
+                  type="text"
+                  value={config.slogan}
+                  onChange={e => update('slogan', e.target.value)}
+                  placeholder="Ej: SI NO TIENES TIEMPO, NOSOTROS LO HACEMOS"
+                />
+              </div>
+              <div className="pn-field">
+                <label className="pn-label" htmlFor="pn-nit">NIT</label>
+                <input
+                  id="pn-nit"
+                  className="pn-input"
+                  type="text"
+                  value={config.nit}
+                  onChange={e => update('nit', e.target.value)}
+                  placeholder="Ej: 900.123.456-7"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom fields: full width */}
+          <div className="pn-bottom-fields">
+            <div className="pn-field">
+              <label className="pn-label" htmlFor="pn-dir">Dirección</label>
+              <input
+                id="pn-dir"
+                className="pn-input"
+                type="text"
+                value={config.direccion}
+                onChange={e => update('direccion', e.target.value)}
+                placeholder="Ej: Calle 163a #14b-25, Bogotá"
+              />
+            </div>
+            <div className="pn-field">
+              <label className="pn-label" htmlFor="pn-tel">Teléfono / WhatsApp</label>
+              <input
+                id="pn-tel"
+                className="pn-input"
+                type="text"
+                value={config.telefono}
+                onChange={e => update('telefono', e.target.value)}
+                placeholder="Ej: 310 669 7376"
+              />
+            </div>
+            <div className="pn-field">
+              <label className="pn-label" htmlFor="pn-pie">Mensaje pie de recibo</label>
+              <input
+                id="pn-pie"
+                className="pn-input"
+                type="text"
+                value={config.mensaje_pie}
+                onChange={e => update('mensaje_pie', e.target.value)}
+                placeholder="¡GRACIAS POR TU PREFERENCIA!"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* ── Receipt preview ── */}
+        <div className="pn-preview-wrap">
+          <div className="pn-preview-label">VISTA PREVIA DEL RECIBO</div>
+          <div className="pn-receipt" aria-label="Vista previa del recibo térmico">
+            {config.logo_base64 && (
+              <div className="pn-receipt__logo">
+                <img src={config.logo_base64} alt="Logo" style={{ maxWidth: 120, maxHeight: 70, objectFit: 'contain' }} />
+              </div>
+            )}
+            <div className="pn-receipt__name">{config.nombre || 'NOMBRE DEL NEGOCIO'}</div>
+            {config.slogan && <div className="pn-receipt__slogan">{config.slogan}</div>}
+            <div className="pn-receipt__sep" aria-hidden="true">{'─'.repeat(30)}</div>
+            {config.direccion && <div className="pn-receipt__line">{config.direccion}</div>}
+            {config.telefono && <div className="pn-receipt__line">Tel: {config.telefono}</div>}
+            {config.nit && <div className="pn-receipt__line">NIT: {config.nit}</div>}
+            <div className="pn-receipt__sep" aria-hidden="true">{'─'.repeat(30)}</div>
+            <div className="pn-receipt__footer">{config.mensaje_pie || '¡GRACIAS POR TU PREFERENCIA!'}</div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+  );
+}
+
+/* ── PrinterSection ──────────────────────────────────────── */
+const TEST_NEGOCIO = { nombre: 'PRUEBA IMPRESORA', slogan: 'Test WashFlow', telefono: '000 000 0000' };
+const TEST_ORDEN = {
+  id: 9999, order_id: 9999,
+  user_name: 'Cliente Prueba', user_contact: '300 000 0000',
+  date: new Date().toISOString(),
+  servicios_data: [{ qty: 2, service_name: 'Lavado + Secado', unit_price: 8000, value: 8000 }],
+  total_amount: 16000, balance_due: 0,
+};
+
+function PrinterSection() {
+  const [connected, setConnected]   = useState(false);
+  const [checking, setChecking]     = useState(true);
+  const [printers, setPrinters]     = useState([]);
+  const [selected, setSelected]     = useState('');
+  const [toast, setToast]           = useState(null);
+  const [testing, setTesting]       = useState(false);
+
+  const showToast = (msg, ok = true) => {
+    setToast({ msg, ok });
+    setTimeout(() => setToast(null), 3500);
+  };
+
+  const handleDownloadBat = () => {
+    const content = '@echo off\r\necho Iniciando WashFlow PrintBridge...\r\ncd /d "%~dp0"\r\npip install -r requirements_print.txt -q\r\npython printbridge.py\r\npause\r\n';
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'START_IMPRESORA.bat';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  useEffect(() => {
+    setChecking(true);
+    isPrintAvailable().then(ok => {
+      setConnected(ok);
+      setChecking(false);
+      if (ok) {
+        getPrinters().then(list => {
+          setPrinters(list);
+          if (list.length > 0) setSelected(list[0]);
+        });
+      }
+    });
+  }, []);
+
+  const handleSelectPrinter = async (name) => {
+    setSelected(name);
+    const ok = await configurePrinter(name);
+    if (ok) showToast('✅ Impresora configurada');
+  };
+
+  const handleTest = async () => {
+    setTesting(true);
+    try {
+      const negocio = (() => {
+        try { return JSON.parse(localStorage.getItem('washflow_negocio_config')) || TEST_NEGOCIO; } catch { return TEST_NEGOCIO; }
+      })();
+      const result = await printOrden(TEST_ORDEN, negocio, 1);
+      if (result.success) {
+        showToast('✅ Recibo de prueba enviado');
+      } else {
+        showToast('❌ No se pudo conectar. ¿Está corriendo PrintBridge?', false);
+      }
+    } catch {
+      showToast('❌ No se pudo conectar. ¿Está corriendo PrintBridge?', false);
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <section className="ab-card pt-card">
+      <div className="ab-card-header">
+        <div className="ab-card-header__left">
+          <h2 className="ab-card-title">
+            <span className="ab-card-title__icon" aria-hidden="true">🖨️</span>
+            Configuración de Impresora
+          </h2>
+          <p className="ab-card-subtitle">Impresora térmica local (USB) para recibos</p>
+        </div>
+        <div className="pt-status-badge">
+          {checking
+            ? <span className="pt-dot pt-dot--checking" />
+            : <span className={`pt-dot${connected ? ' pt-dot--on' : ' pt-dot--off'}`} />
+          }
+          <span className="pt-status-label">
+            {checking ? 'Verificando...' : connected ? 'Conectada' : 'Sin conexión'}
+          </span>
+        </div>
+      </div>
+
+      {toast && (
+        <div className={`ab-toast ${toast.ok ? 'ab-toast--ok' : 'ab-toast--err'}`} style={{ margin: '10px 24px 0' }}>
+          {toast.msg}
+        </div>
+      )}
+
+      <div className="pt-body">
+        {connected ? (
+          <>
+            {printers.length > 0 && (
+              <div className="pt-field">
+                <label className="pn-label">Impresora activa</label>
+                <select
+                  className="pt-select"
+                  value={selected}
+                  onChange={e => handleSelectPrinter(e.target.value)}
+                >
+                  {printers.map(p => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <button
+              className="pt-test-btn"
+              onClick={handleTest}
+              disabled={testing}
+            >
+              {testing
+                ? <><span className="ab-save-spinner" /> Imprimiendo prueba...</>
+                : '🧾 Probar impresión'
+              }
+            </button>
+          </>
+        ) : (
+          <div className="pt-offline-msg">
+            <p>La impresora solo funciona en el PC con <strong>PrintBridge</strong> activo. En celular/tablet se omite automáticamente.</p>
+          </div>
+        )}
+
+        <div className="pt-download-row">
+          <span className="pt-download-label">📥 ¿No tienes PrintBridge?</span>
+          <button className="pt-download-btn" onClick={handleDownloadBat}>
+            Descargar START_IMPRESORA.bat
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /* ── Page ────────────────────────────────────────────────── */
 export default function Configuracion({ user }) {
   const canEdit = user?.role === 'admin' || user?.role === 'superadmin';
@@ -780,9 +1191,10 @@ export default function Configuracion({ user }) {
         <p className="ab-page-subtitle">Personaliza tu espacio de trabajo</p>
       </div>
 
-      <SuscripcionSection user={user} />
+      {canEdit && <PerfilNegocioSection />}
+      {canEdit && <PrinterSection />}
 
-      {/* {canEdit && <BusinessInfoSection />} */}
+      <SuscripcionSection user={user} />
 
       {canEdit
         ? <AbreviacionesSection />

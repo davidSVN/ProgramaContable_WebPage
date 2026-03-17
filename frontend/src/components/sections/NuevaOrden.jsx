@@ -11,6 +11,7 @@ import {
 } from '../../services/nuevaOrden';
 import { api } from '../../services/api';
 import PrintInvoice from '../ui/PrintInvoice';
+import { printOrden, isPrintAvailable } from '../../services/print';
 
 /* ── Constants ──────────────────────────────────────────────── */
 const PAYMENT_METHODS = ['Efectivo', 'Nequi', 'Daviplata', 'Transferencia', 'Llave', 'Saldo a Favor'];
@@ -854,7 +855,8 @@ export default function NuevaOrden() {
   const [successFlash, setSuccessFlash]   = useState(false);
   const [showConfetti, setShowConfetti]   = useState(false);
   const [toasts, setToasts] = useState([]);
-  // const [printData, setPrintData] = useState(null);
+  const [negocioConfig, setNegocioConfig] = useState(null);
+  const [printerAvailable, setPrinterAvailable] = useState(false);
   const tableTopRef = useRef(null);
   const searchTimer     = useRef(null);
   const toastTimers     = useRef({});
@@ -940,6 +942,21 @@ export default function NuevaOrden() {
     api.get('/settings/abreviaciones')
       .then(data => setAbbreviations(data.abreviaciones || {}))
       .catch(() => setAbbreviations({}));
+
+    // Load negocio config (localStorage first, then fresh)
+    try {
+      const cached = localStorage.getItem('washflow_negocio_config');
+      if (cached) setNegocioConfig(JSON.parse(cached));
+    } catch {}
+    api.get('/configuracion/negocio')
+      .then(data => {
+        setNegocioConfig(data);
+        localStorage.setItem('washflow_negocio_config', JSON.stringify(data));
+      })
+      .catch(() => {});
+
+    // Check if thermal printer is available on this PC
+    isPrintAvailable().then(setPrinterAvailable);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Click outside dropdown ────────────────────────────────
@@ -1166,41 +1183,30 @@ export default function NuevaOrden() {
 
       // Success
       const orderNum = result?.order_id ?? result?.id ?? '—';
-      addToast(
-        `✅ Orden #${orderNum} creada — ${selectedClient.user_name} — ${fmtCOP(total)}`,
-        'success',
-        '',
-      );
-      // Print
-      const newPrintData = {
-        order_id: orderNum.toString(),
-        client_name: selectedClient.user_name,
-        client_phone: selectedClient.user_contact,
-        client_email: selectedClient.email,
-        date: new Date().toLocaleString('es-CO'),
-        items: items.map(i => ({
-          qty: i.quantity,
-          name: i.service_name,
-          unit_price: i.unit_price,
-          total: i.quantity * i.unit_price,
-          description: i.description
-        })),
-        subtotal: subtotal,
-        discount: discountAmt,
-        abono: totalAbono,
-        total: total,
-        user_id: 'Admin', // Placeholder or get from auth context if available
-        payment_status: paymentStatus,
-        payment_method: paymentStatus === 'Pagada' ? singleMethod : 'Varios/Pendiente'
-      };
+      const printMsg = printerAvailable
+        ? `✅ Orden #${orderNum} creada — ${selectedClient.user_name} — ${fmtCOP(total)} · 🖨️ Imprimiendo 2 copias...`
+        : `✅ Orden #${orderNum} creada — ${selectedClient.user_name} — ${fmtCOP(total)}`;
+      addToast(printMsg, 'success', '');
 
-      setPrintData(newPrintData);
-      
-      // Delay to ensure component renders before printing
-      setTimeout(() => {
-        window.print();
-        setPrintData(null);
-      }, 500);
+      // Thermal print — fire and forget, silent fail on mobile/tablet
+      if (printerAvailable) {
+        const ordenParaImprimir = {
+          id: orderNum,
+          order_id: orderNum,
+          user_name: selectedClient.user_name,
+          user_contact: selectedClient.user_contact || '',
+          date: new Date().toISOString(),
+          servicios_data: items.map(i => ({
+            qty: i.quantity,
+            service_name: i.service_name,
+            unit_price: i.unit_price,
+            value: i.unit_price,
+          })),
+          total_amount: total,
+          balance_due: saldoPendiente,
+        };
+        printOrden(ordenParaImprimir, negocioConfig, 2).catch(() => {});
+      }
 
       setSuccessFlash(true);
       setShowConfetti(true);

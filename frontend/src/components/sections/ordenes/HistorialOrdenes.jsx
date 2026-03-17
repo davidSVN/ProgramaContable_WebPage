@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { getHistorialOrdenes, getOrdenesStats, deleteOrden, updateOrdenEstado, entregarOrden } from '../../../services/ordenes';
 import PrintInvoice from '../../ui/PrintInvoice';
+import { printOrden, isPrintAvailable } from '../../../services/print';
 import './HistorialOrdenes.css';
 
 // ── Formatters ────────────────────────────────────────────────────────────────
@@ -201,7 +202,8 @@ export default function HistorialOrdenes({ user, onNavigate }) {
   const [editForm, setEditForm]     = useState({});
   const [editSaving, setEditSaving] = useState(false);
   const [toast, setToast]           = useState(null);
-  // const [printData, setPrintData]   = useState(null);
+  const [printerAvailable, setPrinterAvailable] = useState(false);
+  const [printingId, setPrintingId] = useState(null);
 
   // ── Delivery modal state ───────────────────────────────────────────────────
   const [isEntregarOpen, setIsEntregarOpen]               = useState(false);
@@ -303,6 +305,7 @@ export default function HistorialOrdenes({ user, onNavigate }) {
   useEffect(() => {
     fetchStats();
     fetchOrders({ page: 1 });
+    isPrintAvailable().then(setPrinterAvailable);
     
     // Fetch unique statuses for the filter dropdown
     import('../../../services/ordenes').then(m => {
@@ -616,42 +619,28 @@ export default function HistorialOrdenes({ user, onNavigate }) {
     }
   };
 
-  /* Comentado temporalmente: Función de reimpresión
   const handleReprint = async (order) => {
+    if (printingId === order.id) return;
+    setPrintingId(order.id);
     try {
-      showToast(`Preparando impresión #${order.id}...`, 'info');
-      // Necesitamos los detalles de la orden (items) para imprimir
-      const { getOrdenDetalle } = await import('../../../services/ordenes');
-      const detalles = await getOrdenDetalle(order.id);
-      
-      const pData = {
-        order_id: order.id,
-        user_name: order.user_name,
-        user_id: order.user_id,
-        date: order.date,
-        items: detalles.map(d => ({
-          name: d.name,
-          qty: d.qty,
-          value: d.value,
-          description: d.description,
-          is_agency: d.is_agency
-        })),
-        total_amount: order.total_amount,
-        balance_due: order.balance_due,
-        discount: order.discount,
-        state_payment: order.estado_pago
-      };
+      let negocioConfig = null;
+      try {
+        const cached = localStorage.getItem('washflow_negocio_config');
+        if (cached) negocioConfig = JSON.parse(cached);
+      } catch {}
 
-      setPrintData(pData);
-      setTimeout(() => {
-        window.print();
-        setPrintData(null);
-      }, 500);
-    } catch (err) {
-      showToast('Error al obtener detalles para impresión', 'error');
+      const result = await printOrden(order, negocioConfig, 1);
+      if (result.success) {
+        showToast(`🖨️ Recibo #${order.id} enviado a impresora`, 'success');
+      } else {
+        showToast('No se pudo conectar con la impresora', 'error');
+      }
+    } catch {
+      showToast('No se pudo conectar con la impresora', 'error');
+    } finally {
+      setPrintingId(null);
     }
   };
-  */
 
   // ── Toast ────────────────────────────────────────────────────────────────────
   const showToast = (msg, type = 'info') => {
@@ -887,13 +876,16 @@ export default function HistorialOrdenes({ user, onNavigate }) {
                 >
                   <td className="ho-td ho-td--actions" onClick={e => e.stopPropagation()}>
                     <div className="ho-actions">
-                      {/* Comentado temporalmente
-                      <button
-                        className="ho-action-btn"
-                        title="Imprimir"
-                        onClick={e => { e.stopPropagation(); handleReprint(o); }}
-                      >🖨️</button>
-                      */}
+                      {printerAvailable && (
+                        <button
+                          className={`ho-action-btn ho-action-btn--print${printingId === o.id ? ' ho-action-btn--printing' : ''}`}
+                          title="Reimprimir recibo"
+                          disabled={printingId === o.id}
+                          onClick={e => { e.stopPropagation(); handleReprint(o); }}
+                        >
+                          {printingId === o.id ? <span className="ho-print-spinner" /> : '🖨️'}
+                        </button>
+                      )}
                       <button
                         className="ho-action-btn"
                         title="Editar estado"

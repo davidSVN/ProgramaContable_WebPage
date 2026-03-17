@@ -591,6 +591,21 @@ class SuscripcionInfo(BaseModel):
     features: Dict[str, bool]
 
 
+# ─── Negocio Config ───────────────────────────────────────────────────────────
+
+class NegocioConfig(BaseModel):
+    nombre: str = ""
+    slogan: str = ""
+    direccion: str = ""
+    telefono: str = ""
+    nit: str = ""
+    mensaje_pie: str = "¡GRACIAS POR TU PREFERENCIA!"
+    logo_base64: Optional[str] = None  # "data:image/png;base64,..."
+
+class NegocioConfigResponse(NegocioConfig):
+    tenant_id: int
+
+
 # ─── Business Settings ────────────────────────────────────────────────────────
 
 class BusinessSettingsUpdate(BaseModel):
