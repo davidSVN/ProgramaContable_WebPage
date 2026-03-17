@@ -40,7 +40,9 @@ async def crear(
         # Verificar si ya existe
         stmt = select(Service).where(
             Service.tenant_id == tenant_id,
-            Service.service_name == datos.service_name
+            Service.service_name == datos.service_name,
+            Service.user_institute == datos.user_institute,
+            Service.nombre_instituto == datos.nombre_instituto
         )
         existe = await db.execute(stmt)
         if existe.scalars().first():

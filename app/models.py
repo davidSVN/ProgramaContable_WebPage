@@ -50,7 +50,7 @@ class Service(Base):
     nombre_instituto = Column(String(100), default="usuario")
     tenant = relationship("Tenant")
     
-    __table_args__ = (UniqueConstraint("service_name", "tenant_id"),)
+    __table_args__ = (UniqueConstraint("service_name", "tenant_id", "user_institute", "nombre_instituto"),)
 
 
 class LaundryUser(Base):

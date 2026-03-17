@@ -1,9 +1,9 @@
-const VITE_API_URL = import.meta.env.VITE_API_URL;
+const VITE_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 // Normalizar BASE_URL: asegurar que existe y no tiene barra al final
-const BASE_URL = VITE_API_URL ? VITE_API_URL.replace(/\/$/, '') : '';
+const BASE_URL = VITE_API_URL.replace(/\/$/, '');
 
-if (!BASE_URL && import.meta.env.PROD) {
-  console.warn("VITE_API_URL no está definida en producción. Las peticiones fallarán o usarán rutas locales.");
+if (!import.meta.env.VITE_API_URL && import.meta.env.PROD) {
+  console.warn("VITE_API_URL no está definida en producción. Usando fallback: " + BASE_URL);
 }
 
 const TOKEN_KEY = 'washflow_token';
