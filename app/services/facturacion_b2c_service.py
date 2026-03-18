@@ -185,7 +185,7 @@ async def listar_servicios_disponibles(
         # Si hay institución: filtrar por instituto y nombre específico
         stmt = select(Service).where(
             Service.user_institute.ilike("instituto"),
-            Service.nombre_instituto.ilike(institucion),
+            func.unaccent(Service.nombre_instituto).ilike(func.unaccent(institucion)),
         )
 
     if tenant_id is not None:
@@ -204,10 +204,10 @@ async def buscar_clientes(
     stmt = (
         select(LaundryUser)
         .where(
-            LaundryUser.user_institute == "Usuario",
+            LaundryUser.user_institute.ilike("usuario"),
             or_(
-                LaundryUser.user_name.ilike(f"%{query}%"),
-                LaundryUser.user_contact.ilike(f"%{query}%"),
+                func.unaccent(LaundryUser.user_name).ilike(func.unaccent(f"%{query}%")),
+                func.unaccent(LaundryUser.user_contact).ilike(func.unaccent(f"%{query}%")),
             ),
         )
     )

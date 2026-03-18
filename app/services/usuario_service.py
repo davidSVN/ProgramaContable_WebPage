@@ -72,13 +72,19 @@ class UsuarioDTO:
 # ──────────────────────────────────────────────────────────────
 
 def _apply_search_filters(stmt, search_names: List[str], search_contacts: List[str]):
-    """Aplica filtros de búsqueda por nombre o contacto (OR dentro del mismo tipo)."""
+    """Aplica filtros de búsqueda por nombre o contacto (insensible a acentos y case)."""
     if search_names:
-        name_filters = [LaundryUser.user_name.ilike(f"%{n}%") for n in search_names if n]
+        name_filters = [
+            func.unaccent(LaundryUser.user_name).ilike(func.unaccent(f"%{n}%")) 
+            for n in search_names if n
+        ]
         if name_filters:
             stmt = stmt.where(or_(*name_filters))
     if search_contacts:
-        contact_filters = [LaundryUser.user_contact.ilike(f"%{c}%") for c in search_contacts if c]
+        contact_filters = [
+            func.unaccent(LaundryUser.user_contact).ilike(func.unaccent(f"%{c}%")) 
+            for c in search_contacts if c
+        ]
         if contact_filters:
             stmt = stmt.where(or_(*contact_filters))
     return stmt
@@ -201,8 +207,8 @@ async def buscar_por_nombre(
 
     if query:
         stmt = stmt.where(
-            LaundryUser.user_name.ilike(f"%{query}%") |
-            LaundryUser.user_contact.ilike(f"%{query}%")
+            func.unaccent(LaundryUser.user_name).ilike(func.unaccent(f"%{query}%")) |
+            func.unaccent(LaundryUser.user_contact).ilike(func.unaccent(f"%{query}%"))
         )
     stmt = stmt.order_by(LaundryUser.user_name.asc()).limit(limit)
     result = await db.execute(stmt)
