@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, Dict
+from typing import Any, List as _List2, Optional, Dict
 from pydantic import BaseModel, EmailStr
 
 
@@ -330,6 +330,7 @@ class OrdenResponse(BaseModel):
     items_description: Optional[str] = None
     is_institute: bool
     consolidated_invoice_id: Optional[int] = None
+    servicios_data: Optional[_List2[Any]] = None
 
     model_config = ConfigDict(from_attributes=True)
 

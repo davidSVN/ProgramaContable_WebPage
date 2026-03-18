@@ -35,6 +35,13 @@ export function buildPrintPayload(orden, neg, copias=1) {
       vlr_unit:s.value||s.unit_price||0,
       vlr_total:(s.qty||s.quantity||1)*(s.value||s.unit_price||0)
     }))
+  else if(orden.details?.length>0)
+    items=orden.details.map(d=>({
+      cantidad:d.quantity||1,
+      detalle:(d.service_name||'').slice(0,30),
+      vlr_unit:d.unit_price||0,
+      vlr_total:d.total_item_price||0
+    }))
   else if(orden.items_description)
     items=[{cantidad:1,detalle:orden.items_description.slice(0,30),
       vlr_unit:orden.total_amount||0,vlr_total:orden.total_amount||0}]

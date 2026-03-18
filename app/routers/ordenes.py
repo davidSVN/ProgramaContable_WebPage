@@ -393,7 +393,9 @@ async def crear_orden(
     )
     if isinstance(resultado, str):
         raise HTTPException(status_code=400, detail=resultado)
-    return _orden_dto_to_dict(resultado)
+    orden_dict = _orden_dto_to_dict(resultado)
+    orden_dict["servicios_data"] = servicios_data
+    return orden_dict
 
 
 # ── 6. GET /ordenes/{order_id}/detalle ───────────────────────────────────────
