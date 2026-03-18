@@ -95,6 +95,10 @@ function buildReceiptHTML(negocio, orden) {
         <div class="separator"></div>
         <div class="footer">${negocio.mensaje_pie}</div>
       ` : ''}
+      <div style="white-space: pre; font-size: 10px;">
+
+
+</div>
     </div>
   `
 }
@@ -118,8 +122,12 @@ const THERMAL_CSS = `
       position: fixed !important;
       left: 0 !important;
       top: 0 !important;
-      width: 74mm !important;
+      width: 76mm !important;
+      height: auto !important;
+      overflow: visible !important;
       background: white !important;
+      page-break-after: avoid;
+      break-after: avoid;
     }
 
     #washflow-receipt-container .receipt {
@@ -132,15 +140,19 @@ const THERMAL_CSS = `
 
     @page {
       size: 80mm auto;
-      margin: 2mm 3mm;
+      margin: 0mm 2mm;
     }
 
     .receipt {
-      width: 74mm;
+      width: 76mm;
+      max-width: 76mm;
       font-family: 'Courier New', Courier, monospace;
-      font-size: 11px;
+      font-size: 12px;
       color: #000 !important;
       background: #fff !important;
+      padding: 2mm 0;
+      page-break-after: avoid;
+      break-after: avoid;
     }
 
     .logo {
@@ -197,7 +209,7 @@ const THERMAL_CSS = `
     .items-table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 10px;
+      font-size: 11px;
       display: table !important;
     }
     .items-table thead { display: table-header-group !important; }
@@ -207,9 +219,9 @@ const THERMAL_CSS = `
     .items-table td    { display: table-cell !important; padding: 1px 0; }
     .items-table th    { font-weight: bold; }
 
-    .qty   { width: 8mm;  text-align: center; }
-    .desc  { width: 32mm; text-align: left; }
-    .price { width: 17mm; text-align: right; }
+    .qty   { width: 10mm; text-align: center; }
+    .desc  { width: 36mm; text-align: left; }
+    .price { width: 15mm; text-align: right; }
 
     .totals      { font-size: 10px; margin: 2px 0; display: block !important; }
     .total-pzs   { margin-bottom: 2px; display: block !important; }
@@ -237,6 +249,12 @@ const THERMAL_CSS = `
     }
   }
 `
+
+// NOTE: Paper cut is handled automatically by the POS-80
+// Windows driver setting "Cut paper after each job".
+// To enable: Windows > Printers > POS-80-Series >
+// Printing Preferences > Options > Cut paper = Automatic
+// No ESC/POS cut() command needed from browser.
 
 let _styleInjected = false
 function injectPrintStyles() {
