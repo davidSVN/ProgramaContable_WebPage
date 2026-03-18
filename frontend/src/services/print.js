@@ -30,8 +30,10 @@ export function buildPrintPayload(orden, neg, copias=1) {
   let items=[]
   if(orden.servicios_data?.length>0)
     items=orden.servicios_data.map(s=>({
-      cantidad:s.qty||1, detalle:s.name||'',
-      vlr_unit:s.value||0, vlr_total:(s.qty||1)*(s.value||0)
+      cantidad:s.qty||s.quantity||1,
+      detalle:(s.name||s.service_name||'').slice(0,30),
+      vlr_unit:s.value||s.unit_price||0,
+      vlr_total:(s.qty||s.quantity||1)*(s.value||s.unit_price||0)
     }))
   else if(orden.items_description)
     items=[{cantidad:1,detalle:orden.items_description.slice(0,30),

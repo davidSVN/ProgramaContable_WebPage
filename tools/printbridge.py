@@ -27,20 +27,31 @@ def t(s):
 
 def money(v):
     n=round(float(v or 0))
-    return f"${n:,}".replace(',','.')
+    return f"{n:,.0f}".replace(',','.')
 
-def logo_bytes(b64, max_w=384):
+def logo_bytes(b64, max_w=512):
     img=Image.open(io.BytesIO(base64.b64decode(b64.split(',')[1]))).convert('L')
     r=max_w/img.width
     img=img.resize((max_w,int(img.height*r)),Image.LANCZOS).convert('1')
     wb=(img.width+7)//8; px=list(img.getdata())
     out=bytearray(GS+b'v0\x00'+bytes([wb%256,wb//256,img.height%256,img.height//256]))
+    # White background 512px exact
+    bg_w = 512
+    wb_bg = (bg_w+7)//8
+    out = bytearray(GS+b'v0\x00'+bytes([wb_bg%256,wb_bg//256,img.height%256,img.height//256]))
+    
+    # Center the image in 512px
+    offset = (bg_w - img.width) // 2
     for row in range(img.height):
-        for col in range(0,img.width,8):
-            b=0
-            for bit in range(8):
-                if col+bit<img.width and px[row*img.width+col+bit]==0:
-                    b|=(1<<(7-bit))
+        # Create a full row of 512 bits (64 bytes)
+        row_data = [0] * wb_bg
+        for col in range(img.width):
+            if px[row*img.width + col] == 0:
+                target_col = col + offset
+                byte_idx = target_col // 8
+                bit_idx = 7 - (target_col % 8)
+                row_data[byte_idx] |= (1 << bit_idx)
+        for b in row_data:
             out.append(b)
     return bytes(out)
 
@@ -53,25 +64,32 @@ def build(neg, ord):
     for k in ['slogan','direccion']:
         if neg.get(k): d+=t(neg[k]+'\n')
     if neg.get('nit'): d+=t(f"NIT: {neg['nit']}\n")
-    d+=b'-'*32+b'\n'
+    d+=b'-'*48+b'\n'
     if neg.get('telefono'):
-        d+=CENTER+BOLD_ON+t('DOMICILIOS / CONTACTO\n'+neg['telefono']+'\n')+BOLD_OFF+b'-'*32+b'\n'
+        d+=CENTER+BOLD_ON+t('DOMICILIOS / CONTACTO\n'+neg['telefono']+'\n')+BOLD_OFF+b'-'*48+b'\n'
     d+=CENTER+BOLD_ON+t(f"ORDEN #{ord.get('numero','0')}\n")+BOLD_OFF+b'\n'
-    d+=CENTER+t('Cliente\n')+BOLD_ON+t(ord.get('cliente','').upper()+'\n')+BOLD_OFF+LEFT
+    d+=CENTER+t('Cliente\n')+BOLD_ON+t(str(ord.get('cliente','')).upper()[:48]+'\n')+BOLD_OFF+LEFT
     if ord.get('telefono_cliente'): d+=t(f"Tel: {ord['telefono_cliente']}\n")
-    d+=t(f"Fecha: {ord.get('fecha','')}\n")+b'-'*32+b'\n'
-    d+=BOLD_ON+t(f"{'Cant':<5}{'Detalle':<15}{'V.Unit':>6}{'V.Tot':>6}\n")+BOLD_OFF+b'-'*32+b'\n'
+    d+=t(f"Fecha: {ord.get('fecha','')}\n")+b'-'*48+b'\n'
+    d+=t(f"{'Cant':<5}{'Detalle':<19}{'V.Unit':>12}{'V.Tot':>12}\n")+b'-'*48+b'\n'
     pzs=0
     for item in ord.get('items',[]):
-        c=int(item.get('cantidad',1)); pzs+=c
-        d+=t(f"{c:<5}{str(item.get('detalle',''))[:14]:<14}{money(item.get('vlr_unit',0)):>7}{money(item.get('vlr_total',0)):>6}\n")
-    d+=b'-'*32+b'\n'+t(f"Total Pzs. {pzs}\n")
-    d+=t(f"Subtotal: {money(ord.get('subtotal',0))}\nAbono:    {money(ord.get('abono',0))}\n")
-    d+=b'-'*32+b'\n'+LEFT+BOLD_ON
-    d+=t(f"{str(ord.get('estado_pago','PENDIENTE'))[:18]:<18}{money(ord.get('total',0)):>10}\n")+BOLD_OFF
+        c=float(item.get('cantidad',1)); pzs+=c
+        name = str(item.get('detalle',''))[:18]
+        v_unit = float(item.get('vlr_unit',0))
+        v_tot = float(item.get('vlr_total',0))
+        d+=t(f"{int(c) if c.is_integer() else c:>2} {name:<18} {money(v_unit):>12} {money(v_tot):>12}\n")
+    d+=b'-'*48+b'\n'
+    line_sub = f"Total Pzs. {int(pzs):<8}      Subtotal: {money(ord.get('subtotal',0)):>12}\n"
+    d+=t(line_sub)
+    if ord.get('abono',0) > 0:
+        d+=t(f"{' ':27}Abono: {money(ord.get('abono',0)):>12}\n")
+    d+=b'-'*48+b'\n'+LEFT+BOLD_ON
+    label_pago = str(ord.get('estado_pago','PENDIENTE')).upper()
+    d+=t(f"{label_pago:<25} {money(ord.get('total',0)):>22}\n")+BOLD_OFF
     d+=CENTER+b'\n'
     if neg.get('mensaje_pie'): d+=t(neg['mensaje_pie']+'\n')
-    d+=FEED3+CUT
+    d+=b'-'*48+b'\n'+FEED3+CUT
     return bytes(d)
 
 def send(data):

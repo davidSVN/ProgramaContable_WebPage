@@ -623,13 +623,31 @@ export default function HistorialOrdenes({ user, onNavigate }) {
     if (printingId === order.id) return;
     setPrintingId(order.id);
     try {
+      let fullOrder = order;
+      // If we don't have servicios_data (common in history list), fetch it
+      if (!order.servicios_data || order.servicios_data.length === 0) {
+        try {
+          const detail = await getOrdenDetalle(order.id);
+          fullOrder = {
+            ...order,
+            servicios_data: detail.map(d => ({
+              qty: d.qty,
+              name: d.name,
+              value: d.value
+            }))
+          };
+        } catch (e) {
+          console.error("Error fetching detail for print:", e);
+        }
+      }
+
       let negocioConfig = null;
       try {
         const cached = localStorage.getItem('washflow_negocio_config');
         if (cached) negocioConfig = JSON.parse(cached);
       } catch {}
 
-      const result = await printOrden(order, negocioConfig, 1);
+      const result = await printOrden(fullOrder, negocioConfig, 1);
       if (result.success) {
         showToast(`🖨️ Recibo #${order.id} enviado a impresora`, 'success');
       } else {
