@@ -3,7 +3,7 @@ import './Configuracion.css';
 import { api } from '../../services/api';
 import { getSuscripcionInfo, updatePlan } from '../../services/suscripcion';
 import { getNegocioConfig, updateNegocioConfig } from '../../services/configuracion';
-import { isWebSerialSupported, isPrintAvailable, requestPrinterPort, getPrinterPortInfo, clearPrinterPort, printTest } from '../../services/print';
+import { printTest } from '../../services/print';
 
 /* ── Expand utility ─────────────────────────────────────── */
 const expandText = (text, abbreviations) =>
@@ -1038,63 +1038,16 @@ function PerfilNegocioSection() {
 /* ── PrinterSection ──────────────────────────────────────── */
 
 function PrinterSection() {
-  const [printerSupported, setPrinterSupported] = useState(false);
-  const [printerConfigured, setPrinterConfigured] = useState(false);
-  const [portInfo, setPortInfo]     = useState(null);
   const [testingPrint, setTestingPrint] = useState(false);
-  const [toast, setToast]           = useState(null);
-
-  const showToast = (msg, ok = true) => {
-    setToast({ msg, ok });
-    setTimeout(() => setToast(null), 3500);
-  };
-
-  useEffect(() => {
-    setPrinterSupported(isWebSerialSupported());
-    const info = getPrinterPortInfo();
-    setPortInfo(info);
-    setPrinterConfigured(!!info?.configured);
-    // Verify port still available (unplugged since last visit)
-    if (info?.configured) {
-      isPrintAvailable().then(available => {
-        if (!available) setPrinterConfigured(false);
-      });
-    }
-  }, []);
-
-  const handleSelectPort = async () => {
-    const ok = await requestPrinterPort();
-    if (ok) {
-      const info = getPrinterPortInfo();
-      setPortInfo(info);
-      setPrinterConfigured(true);
-      showToast('✅ Impresora configurada correctamente');
-    }
-  };
+  const [setupOpen, setSetupOpen]       = useState(false);
 
   const handleTestPrint = async () => {
     setTestingPrint(true);
     let negocioConfig = null;
     try { negocioConfig = JSON.parse(localStorage.getItem('washflow_negocio_config')); } catch {}
-    const result = await printTest(negocioConfig);
+    await printTest(negocioConfig);
     setTestingPrint(false);
-    if (result.success) {
-      showToast('✅ Recibo de prueba impreso correctamente');
-    } else {
-      showToast(`❌ Error: ${result.reason}. Verifica que la impresora esté encendida.`, false);
-    }
   };
-
-  const handleClearPort = () => {
-    clearPrinterPort();
-    setPortInfo(null);
-    setPrinterConfigured(false);
-    showToast('Configuración de impresora eliminada');
-  };
-
-  const configuredDate = portInfo?.configuredAt
-    ? new Date(portInfo.configuredAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })
-    : null;
 
   return (
     <section className="ab-card pt-card">
@@ -1104,75 +1057,57 @@ function PrinterSection() {
             <span className="ab-card-title__icon" aria-hidden="true">🖨️</span>
             Impresora Térmica
           </h2>
-          <p className="ab-card-subtitle">Impresión directa via USB · Sin instalación</p>
+          <p className="ab-card-subtitle">Imprime en cualquier impresora instalada en Windows</p>
         </div>
         <div className="pt-status-badge">
-          <span className={`pt-dot${printerConfigured ? ' pt-dot--on pt-dot--pulse' : ' pt-dot--off'}`} />
-          <span className="pt-status-label">
-            {printerConfigured ? 'Configurada' : 'Sin configurar'}
-          </span>
+          <span className="pt-dot pt-dot--on pt-dot--pulse" />
+          <span className="pt-status-label">Lista para usar</span>
         </div>
       </div>
 
-      {toast && (
-        <div className={`ab-toast ${toast.ok ? 'ab-toast--ok' : 'ab-toast--err'}`} style={{ margin: '10px 24px 0' }}>
-          {toast.msg}
-        </div>
-      )}
-
       <div className="pt-body">
-        {!printerSupported ? (
-          <div className="pt-offline-msg">
-            <p className="pt-offline-msg__title">⚠️ Tu navegador no soporta impresión directa</p>
-            <p className="pt-offline-msg__steps">Usa Chrome o Edge para activar esta función.</p>
-            <div className="pt-offline-actions" style={{ marginTop: 12 }}>
-              <a
-                href="https://www.google.com/chrome/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="pt-download-btn"
-              >
-                Descargar Chrome →
-              </a>
-            </div>
-          </div>
-        ) : printerConfigured ? (
-          <>
-            <p className="pt-online-label">Puerto USB seleccionado</p>
-            {configuredDate && (
-              <p className="pt-windows-hint">Configurada el: {configuredDate}</p>
-            )}
+        <p className="pt-online-label" style={{ color: 'var(--ds-text-secondary, #6B6560)', fontWeight: 400 }}>
+          Al crear una orden aparecerá el diálogo de Windows. Selecciona tu impresora térmica y haz clic en "Imprimir".
+        </p>
+
+        <button
+          className="pt-test-btn"
+          onClick={handleTestPrint}
+          disabled={testingPrint}
+        >
+          {testingPrint
+            ? <><span className="ab-save-spinner" /> Imprimiendo...</>
+            : '🖨️ Imprimir recibo de prueba'
+          }
+        </button>
+
+        <button
+          className="pt-setup-toggle"
+          onClick={() => setSetupOpen(o => !o)}
+          aria-expanded={setupOpen}
+        >
+          {setupOpen ? '▼' : '▶'} Configurar por primera vez
+        </button>
+
+        {setupOpen && (
+          <div className="pt-setup-body">
+            <p className="pt-offline-msg__steps">Para que el recibo se vea correctamente:</p>
+            <ol className="pt-offline-msg__list">
+              <li>Ve a <strong>Inicio → Impresoras y escáneres</strong></li>
+              <li>Haz clic en <strong>POS-80-Series → Administrar</strong></li>
+              <li>Preferencias de impresión</li>
+              <li>Tamaño de papel: <strong>80mm × 200mm</strong> (o "Receipt")</li>
+              <li>Sin márgenes → Guardar</li>
+            </ol>
+            <p style={{ fontSize: '0.82rem', color: 'var(--ds-text-secondary, #6B6560)', marginBottom: 10 }}>
+              Solo necesitas hacer esto una vez.
+            </p>
             <button
-              className="pt-test-btn"
-              onClick={handleTestPrint}
-              disabled={testingPrint}
+              className="pt-test-btn pt-test-btn--secondary"
+              onClick={() => window.open('ms-settings:printers', '_blank')}
             >
-              {testingPrint
-                ? <><span className="ab-save-spinner" /> Imprimiendo...</>
-                : '🖨️ Imprimir recibo de prueba'
-              }
+              ⚙️ Abrir impresoras de Windows
             </button>
-            <button className="pt-test-btn pt-test-btn--secondary" onClick={handleSelectPort}>
-              🔌 Cambiar impresora
-            </button>
-            <button className="pt-clear-btn" onClick={handleClearPort}>
-              ✕ Quitar configuración
-            </button>
-          </>
-        ) : (
-          <div className="pt-offline-msg">
-            <p className="pt-offline-msg__steps">
-              Conecta tu impresora por USB y haz clic en <strong>Seleccionar Impresora</strong> para configurarla.
-              Chrome pedirá permiso una sola vez.
-            </p>
-            <div className="pt-offline-actions" style={{ marginTop: 12 }}>
-              <button className="pt-select-port-btn" onClick={handleSelectPort}>
-                🔌 Seleccionar Impresora
-              </button>
-            </div>
-            <p className="pt-windows-hint" style={{ marginTop: 10 }}>
-              ℹ️ Solo necesitas hacer esto una vez. La configuración se guarda automáticamente.
-            </p>
           </div>
         )}
       </div>

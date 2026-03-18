@@ -1556,6 +1556,30 @@
   opacity: 1;
 }
 
+.pt-setup-toggle {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  font-family: var(--ds-font-body, 'DM Sans', sans-serif);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ds-text-secondary, #6B6560);
+  cursor: pointer;
+  padding: 4px 0;
+  transition: color 150ms;
+}
+
+.pt-setup-toggle:hover {
+  color: var(--ds-accent, #FF6B2B);
+}
+
+.pt-setup-body {
+  padding: 14px 16px;
+  background: var(--ds-content-bg, #F7F5F0);
+  border-radius: 8px;
+  border: 1px solid var(--ds-card-border, #E8E3D8);
+}
+
 .pt-dot--pulse {
   animation: pt-pulse-green 2s infinite;
 }

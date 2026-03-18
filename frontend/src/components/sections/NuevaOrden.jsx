@@ -11,7 +11,7 @@ import {
 } from '../../services/nuevaOrden';
 import { api } from '../../services/api';
 import PrintInvoice from '../ui/PrintInvoice';
-import { printOrden, isPrintAvailable } from '../../services/print';
+import { printOrden } from '../../services/print';
 
 /* ── Constants ──────────────────────────────────────────────── */
 const PAYMENT_METHODS = ['Efectivo', 'Nequi', 'Daviplata', 'Transferencia', 'Llave', 'Saldo a Favor'];
@@ -856,7 +856,6 @@ export default function NuevaOrden() {
   const [showConfetti, setShowConfetti]   = useState(false);
   const [toasts, setToasts] = useState([]);
   const [negocioConfig, setNegocioConfig] = useState(null);
-  const [printerAvailable, setPrinterAvailable] = useState(false);
   const tableTopRef = useRef(null);
   const searchTimer     = useRef(null);
   const toastTimers     = useRef({});
@@ -955,8 +954,6 @@ export default function NuevaOrden() {
       })
       .catch(() => {});
 
-    // Check if thermal printer is available on this PC
-    isPrintAvailable().then(setPrinterAvailable);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Click outside dropdown ────────────────────────────────
@@ -1181,14 +1178,8 @@ export default function NuevaOrden() {
         });
       }
 
-      // Success
+      // Success — print receipt (window.print dialog opens)
       const orderNum = result?.order_id ?? result?.id ?? '—';
-      const printMsg = printerAvailable
-        ? `✅ Orden #${orderNum} creada — ${selectedClient.user_name} — ${fmtCOP(total)} · 🖨️ Imprimiendo 2 copias...`
-        : `✅ Orden #${orderNum} creada — ${selectedClient.user_name} — ${fmtCOP(total)}`;
-      addToast(printMsg, 'success', '');
-
-      // Thermal print — fire and forget, silent fail on mobile/tablet
       const ordenParaImprimir = {
         ...result,
         servicios_data: items.map(i => ({
@@ -1199,7 +1190,8 @@ export default function NuevaOrden() {
         })),
         user_contact: selectedClient?.user_contact || '',
       };
-      printOrden(ordenParaImprimir, negocioConfig, 2).catch(() => {});
+      await printOrden(ordenParaImprimir, negocioConfig, 2);
+      addToast(`✅ Orden #${orderNum} creada — ${selectedClient.user_name} — ${fmtCOP(total)}`, 'success', '');
 
       setSuccessFlash(true);
       setShowConfetti(true);
