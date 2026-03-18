@@ -100,11 +100,35 @@ function buildReceiptHTML(negocio, orden) {
 }
 
 const THERMAL_CSS = `
-  @media print {
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+  #washflow-receipt-container {
+    display: none;
+    position: absolute;
+    left: -9999px;
+    top: 0;
+  }
 
-    body > *:not(#washflow-receipt-container) { display: none !important; }
-    #washflow-receipt-container { display: block !important; }
+  @media print {
+    html, body {
+      visibility: hidden !important;
+    }
+
+    #washflow-receipt-container {
+      visibility: visible !important;
+      display: block !important;
+      position: fixed !important;
+      left: 0 !important;
+      top: 0 !important;
+      width: 74mm !important;
+      background: white !important;
+    }
+
+    #washflow-receipt-container .receipt {
+      visibility: visible !important;
+    }
+
+    #washflow-receipt-container .receipt * {
+      visibility: visible !important;
+    }
 
     @page {
       size: 80mm auto;
@@ -115,12 +139,12 @@ const THERMAL_CSS = `
       width: 74mm;
       font-family: 'Courier New', Courier, monospace;
       font-size: 11px;
-      color: #000;
-      background: #fff;
+      color: #000 !important;
+      background: #fff !important;
     }
 
     .logo {
-      display: block;
+      display: block !important;
       max-width: 60mm;
       max-height: 25mm;
       margin: 0 auto 4px auto;
@@ -128,23 +152,28 @@ const THERMAL_CSS = `
     }
 
     .header { text-align: center; margin-bottom: 4px; }
+
     .business-name {
       font-size: 15px;
       font-weight: bold;
       letter-spacing: 1px;
+      display: block !important;
     }
-    .slogan { font-size: 10px; }
-    .info   { font-size: 10px; }
+
+    .slogan { font-size: 10px; display: block !important; }
+    .info   { font-size: 10px; display: block !important; }
 
     .separator {
       border-top: 1px dashed #000;
       margin: 4px 0;
+      display: block !important;
     }
 
     .contact {
       text-align: center;
       font-size: 10px;
       margin: 3px 0;
+      display: block !important;
     }
 
     .order-number {
@@ -152,45 +181,51 @@ const THERMAL_CSS = `
       font-size: 14px;
       font-weight: bold;
       margin: 5px 0;
+      display: block !important;
     }
 
-    .client-section { margin: 3px 0; }
-    .client-label { text-align: center; font-size: 10px; }
-    .client-name  {
+    .client-section { margin: 3px 0; display: block !important; }
+    .client-label   { text-align: center; font-size: 10px; display: block !important; }
+    .client-name    {
       text-align: center;
       font-weight: bold;
       font-size: 12px;
+      display: block !important;
     }
-    .client-info { font-size: 10px; }
+    .client-info { font-size: 10px; display: block !important; }
 
     .items-table {
       width: 100%;
       border-collapse: collapse;
       font-size: 10px;
+      display: table !important;
     }
-    .items-table th {
-      font-weight: bold;
-      padding: 1px 0;
-    }
-    .items-table td { padding: 1px 0; }
+    .items-table thead { display: table-header-group !important; }
+    .items-table tbody { display: table-row-group !important; }
+    .items-table tr    { display: table-row !important; }
+    .items-table th,
+    .items-table td    { display: table-cell !important; padding: 1px 0; }
+    .items-table th    { font-weight: bold; }
+
     .qty   { width: 8mm;  text-align: center; }
     .desc  { width: 32mm; text-align: left; }
     .price { width: 17mm; text-align: right; }
 
-    .totals { font-size: 10px; margin: 2px 0; }
-    .total-pzs { margin-bottom: 2px; }
-    .total-row {
-      display: flex;
+    .totals      { font-size: 10px; margin: 2px 0; display: block !important; }
+    .total-pzs   { margin-bottom: 2px; display: block !important; }
+    .total-row   {
+      display: flex !important;
       justify-content: space-between;
     }
 
     .grand-total {
-      display: flex;
+      display: flex !important;
       justify-content: space-between;
       font-weight: bold;
       font-size: 11px;
       margin: 2px 0;
     }
+
     .estado { font-size: 10px; }
     .amount { font-size: 12px; }
 
@@ -198,11 +233,8 @@ const THERMAL_CSS = `
       text-align: center;
       font-size: 10px;
       margin-top: 4px;
+      display: block !important;
     }
-  }
-
-  #washflow-receipt-container {
-    display: none;
   }
 `
 
@@ -264,16 +296,20 @@ export function buildPrintPayload(orden, negocioConfig) {
     }]
   }
 
+  const total_amount = orden.total_amount || orden.order_value || 0
+  const balance_due  = orden.balance_due  ?? orden.restante ?? 0
+  const abono        = orden.abono        || orden.total_paid || 0
+
   return {
     numero:           orden.order_id  || orden.id,
     cliente:          orden.user_name || '',
-    telefono_cliente: orden.user_contact || '',
+    telefono_cliente: orden.user_contact || orden.user_phone || '',
     fecha:            fechaStr,
     items,
-    subtotal:    orden.order_value  || orden.total_amount || 0,
-    abono:       orden.abono        || 0,
-    total:       orden.restante     ?? orden.balance_due ?? orden.total_amount ?? 0,
-    estado_pago: (orden.restante > 0 || orden.balance_due > 0)
+    subtotal:    total_amount,
+    abono:       abono,
+    total:       balance_due,
+    estado_pago: (balance_due > 0)
       ? 'PENDIENTE CANCELAR' : 'PAGADA',
   }
 }
@@ -292,13 +328,31 @@ export async function printOrden(orden, negocioConfig, copias = 1) {
         html += '<div style="page-break-after: always;"></div>'
       }
     }
+
     container.innerHTML = html
 
-    await new Promise(r => setTimeout(r, 100))
+    // Force reflow so browser processes the HTML
+    void container.offsetHeight
+
+    // Double rAF + buffer guarantees paint before print
+    await new Promise(resolve => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setTimeout(resolve, 250)
+        })
+      })
+    })
+
     window.print()
+
+    // Clean up after dialog closes
+    window.addEventListener('afterprint', () => {
+      container.innerHTML = ''
+    }, { once: true })
 
     return { success: true }
   } catch (err) {
+    console.error('[WashFlow Print]', err)
     return { success: false, reason: err.message }
   }
 }
