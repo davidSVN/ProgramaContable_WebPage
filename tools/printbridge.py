@@ -10,7 +10,7 @@ BASE = os.path.dirname(sys.executable if getattr(sys,'frozen',False) else __file
 CONFIG = os.path.join(BASE, 'printbridge_config.json')
 
 WIDTH = 48
-LOGO_WIDTH = 50 # Ajusta este valor para cambiar el tamaño del logo (en píxeles)
+LOGO_WIDTH = 25 # Ajusta este valor para cambiar el tamaño del logo (en píxeles)
 ESC=b'\x1b'; GS=b'\x1d'
 INIT=ESC+b'@'; CENTER=ESC+b'a\x01'; LEFT=ESC+b'a\x00'
 BOLD_ON=ESC+b'E\x01'; BOLD_OFF=ESC+b'E\x00'
@@ -75,7 +75,7 @@ def build(neg, ord):
     d+=t(f"Fecha: {ord.get('fecha','')}\n")+b'-'*WIDTH+b'\n'
     
     # ITEMS HEADER — Dinámico según WIDTH
-    col1, col2, col3, col4 = 5, (WIDTH - 25), 10, 10
+    col1, col2, col3, col4 = 5, 25, 15, 15
     d+=BOLD_ON+t(f"{'Cant':<{col1}}{'Detalle':<{col2}}{'V.Unit':>{col3}}{'V.Tot':>{col4}}\n")+BOLD_OFF+b'-'*WIDTH+b'\n'
 
     # ITEMS ROWS
