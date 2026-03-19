@@ -602,6 +602,7 @@ class NegocioConfig(BaseModel):
     nit: str = ""
     mensaje_pie: str = "¡GRACIAS POR TU PREFERENCIA!"
     logo_base64: Optional[str] = None  # "data:image/png;base64,..."
+    logo_width: int = 50
 
 class NegocioConfigResponse(NegocioConfig):
     tenant_id: int

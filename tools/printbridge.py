@@ -10,7 +10,7 @@ BASE = os.path.dirname(sys.executable if getattr(sys,'frozen',False) else __file
 CONFIG = os.path.join(BASE, 'printbridge_config.json')
 
 WIDTH = 48
-LOGO_WIDTH = 25 # Ajusta este valor para cambiar el tamaño del logo (en píxeles)
+LOGO_WIDTH = 50 # Ajusta este valor para cambiar el tamaño del logo (en píxeles)
 ESC=b'\x1b'; GS=b'\x1d'
 INIT=ESC+b'@'; FONT_A=ESC+b'M\x00'; CENTER=ESC+b'a\x01'; LEFT=ESC+b'a\x00'
 BOLD_ON=ESC+b'E\x01'; BOLD_OFF=ESC+b'E\x00'
@@ -68,7 +68,9 @@ def logo_bytes(b64, max_w=LOGO_WIDTH):
 def build(neg, ord):
     d=bytearray(INIT+FONT_A)
     if neg.get('logo_base64'):
-        try: d+=CENTER+logo_bytes(neg['logo_base64'])+b'\n'
+        # Dynamic logo width from JSON, default to LOGO_WIDTH
+        max_w = int(neg.get('logo_width', LOGO_WIDTH))
+        try: d+=CENTER+logo_bytes(neg['logo_base64'], max_w=max_w)+b'\n'
         except: pass
     d+=CENTER+BIG_ON+BOLD_ON+t((neg.get('nombre','LAVANDERIA')).upper()+'\n')+BIG_OFF+BOLD_OFF
     for k in ['slogan','direccion']:
