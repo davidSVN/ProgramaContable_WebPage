@@ -76,15 +76,26 @@ def build(neg, ord):
     
     # ITEMS HEADER — Dinámico según WIDTH
     col1, col2, col3, col4 = 5, 25, 15, 15
-    d+=BOLD_ON+t(f"{'Cant':<{col1}}{'Detalle':<{col2}}{'V.Unit':>{col3}}{'V.Tot':>{col4}}\n")+BOLD_OFF+b'-'*WIDTH+b'\n'
+    # d+=BOLD_ON+t(f"{'Cant':<{col1}}{'Detalle':<{col2}}{'V.Unit':>{col3}}{'V.Tot':>{col4}}\n")+BOLD_OFF+b'-'*WIDTH+b'\n'
+
+    d+=BOLD_ON+t("Cant  Detalle              V.Unit       V.Total\n")+BOLD_OFF+b'-'*WIDTH+b'\n'
 
     # ITEMS ROWS
+    # pzs=0
+    # for item in ord.get('items',[]):
+    #     c = int(item.get('cantidad', 1)); pzs += c
+    #     detalle = str(item.get('detalle',''))[:col2-1]
+    #     d+=t(f"{c:<{col1}}{detalle:<{col2}}{money(item.get('vlr_unit',0)):>{col3}}{money(item.get('vlr_total',0)):>{col4+1}}\n")
     pzs=0
+        
     for item in ord.get('items',[]):
         c = int(item.get('cantidad', 1)); pzs += c
-        detalle = str(item.get('detalle',''))[:col2-1]
-        d+=t(f"{c:<{col1}}{detalle:<{col2}}{money(item.get('vlr_unit',0)):>{col3}}{money(item.get('vlr_total',0)):>{col4+1}}\n")
-
+        cant    = str(c).ljust(6)
+        detalle = str(item.get('detalle','')).ljust(31)[:21]
+        vunit   = money(item.get('vlr_unit',0)).rjust(10)
+        vtotal  = money(item.get('vlr_total',0)).rjust(11)
+        d+=t(f"{cant}{detalle}{vunit}{vtotal}\n")
+    
     # TOTALS right-aligned
     label_w = WIDTH // 2
     val_w = WIDTH - label_w
