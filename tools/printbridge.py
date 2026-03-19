@@ -30,7 +30,7 @@ def money(v):
     n=round(float(v or 0))
     return f"${n:,.0f}".replace(',','.')
 
-def logo_bytes(b64, max_w=512):
+def logo_bytes(b64, max_w=192):
     img=Image.open(io.BytesIO(base64.b64decode(b64.split(',')[1]))).convert('L')
     r=max_w/img.width
     img=img.resize((max_w,int(img.height*r)),Image.LANCZOS).convert('1')
@@ -73,32 +73,26 @@ def build(neg, ord):
     if ord.get('telefono_cliente'): d+=t(f"Tel: {ord['telefono_cliente']}\n")
     d+=t(f"Fecha: {ord.get('fecha','')}\n")+b'-'*WIDTH+b'\n'
     
-    # Tabla: Cant(4) Detalle(21) V.Unit(10) V.Tot(10) + 3 spaces = 48
-    d+=t(f"{'Cant':<4} {'Detalle':<21} {'V.Unit':>10} {'V.Tot':>10}\n")+b'-'*WIDTH+b'\n'
+    # ITEMS HEADER — exact 32 chars
+    header = f"{'Cant':<4} {'Detalle':<13} {'V.Unit':>7} {'V.Tot':>6}\n"
+    d += BOLD_ON + t(header) + BOLD_OFF + b'-'*32 + b'\n'
+
+    # ITEMS ROWS — same column widths
     pzs=0
     for item in ord.get('items',[]):
-        c=float(item.get('cantidad',1)); pzs+=c
-        name = str(item.get('detalle',''))[:21]
-        v_unit = float(item.get('vlr_unit',0))
-        v_tot = float(item.get('vlr_total',0))
-        qty_str = f"{int(c)}" if c.is_integer() else f"{c}"
-        d+=t(f"{qty_str:>4} {name:<21} {money(v_unit):>10} {money(v_tot):>10}\n")
-    
-    d+=b'-'*WIDTH+b'\n'
-    sub_val = money(ord.get('subtotal',0))
-    line_sub = f"Total Pzs. {int(pzs):<5}{'Subtotal:':>23} {sub_val:>10}\n"
-    d+=t(line_sub)
-    
-    if ord.get('abono',0) > 0:
-        abono_val = money(ord.get('abono',0))
-        d+=t(f"{'Abono:':>37} {abono_val:>10}\n")
-    
-    d+=b'-'*WIDTH+b'\n'+LEFT+BOLD_ON
-    label_pago = str(ord.get('estado_pago','PENDIENTE')).upper()[:24]
-    total_val = money(ord.get('total',0))
-    # Label(24) + space(1) + Total(23)? No, let's just pad
-    line_total = f"{label_pago:<24} {total_val:>23}\n"
-    d+=t(line_total)+BOLD_OFF
+        c = int(item.get('cantidad', 1)); pzs += c
+        det = str(item.get('detalle', ''))[:13].ljust(13)
+        vu  = money(item.get('vlr_unit', 0)).rjust(7)
+        vt  = money(item.get('vlr_total', 0)).rjust(6)
+        d += t(f"{c:<4} {det} {vu} {vt}\n")
+
+    # TOTALS right-aligned to col 32
+    d += t(f"{'Total Pzs. '+str(pzs):<16}{'':>16}\n")
+    d += t(f"{'Subtotal:':<16}{money(ord.get('subtotal',0)):>14}\n")
+    d += t(f"{'Abono:':<16}{money(ord.get('abono',0)):>14}\n")
+    d += b'-'*32 + b'\n' + LEFT + BOLD_ON
+    estado = str(ord.get('estado_pago','PENDIENTE'))[:14]
+    d += t(f"{estado:<14}{money(ord.get('total',0)):>18}\n") + BOLD_OFF
     
     d+=CENTER+b'\n'
     if neg.get('mensaje_pie'): d+=t(neg['mensaje_pie']+'\n')
