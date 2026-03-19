@@ -12,7 +12,7 @@ CONFIG = os.path.join(BASE, 'printbridge_config.json')
 WIDTH = 48
 LOGO_WIDTH = 25 # Ajusta este valor para cambiar el tamaño del logo (en píxeles)
 ESC=b'\x1b'; GS=b'\x1d'
-INIT=ESC+b'@'; CENTER=ESC+b'a\x01'; LEFT=ESC+b'a\x00'
+INIT=ESC+b'@'; FONT_A=ESC+b'M\x00'; CENTER=ESC+b'a\x01'; LEFT=ESC+b'a\x00'
 BOLD_ON=ESC+b'E\x01'; BOLD_OFF=ESC+b'E\x00'
 BIG_ON=ESC+b'!\x30'; BIG_OFF=ESC+b'!\x00'
 FEED3=ESC+b'd\x03'; CUT=GS+b'V\x41\x00'
@@ -58,7 +58,7 @@ def logo_bytes(b64, max_w=LOGO_WIDTH):
     return bytes(out)
 
 def build(neg, ord):
-    d=bytearray(INIT)
+    d=bytearray(INIT+FONT_A)
     if neg.get('logo_base64'):
         try: d+=CENTER+logo_bytes(neg['logo_base64'])+b'\n'
         except: pass
@@ -79,7 +79,7 @@ def build(neg, ord):
     # Adjust the spaces in the strings below to align columns on your paper.
 
     d+=BOLD_ON+t("Cant  Detalle              V.Unit       V.Total\n")+BOLD_OFF
-    d+=b'------------------------------------------------------------------\n'
+    d+=b'------------------------------------------------\n'
 
     pzs=0
     for item in ord.get('items',[]):
