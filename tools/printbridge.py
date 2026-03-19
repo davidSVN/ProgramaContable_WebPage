@@ -79,7 +79,7 @@ def build(neg, ord):
     # Adjust the spaces in the strings below to align columns on your paper.
 
     d+=BOLD_ON+t("Cant  Detalle              V.Unit       V.Total\n")+BOLD_OFF
-    d+=b'------------------------------------------------\n'
+    d+=b'------------------------------------------------------------------\n'
 
     pzs=0
     for item in ord.get('items',[]):
