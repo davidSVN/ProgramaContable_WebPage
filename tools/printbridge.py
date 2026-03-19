@@ -73,26 +73,21 @@ def build(neg, ord):
     if ord.get('telefono_cliente'): d+=t(f"Tel: {ord['telefono_cliente']}\n")
     d+=t(f"Fecha: {ord.get('fecha','')}\n")+b'-'*WIDTH+b'\n'
     
-    # ITEMS HEADER — exact 32 chars
-    header = f"{'Cant':<4} {'Detalle':<13} {'V.Unit':>7} {'V.Tot':>6}\n"
-    d += BOLD_ON + t(header) + BOLD_OFF + b'-'*32 + b'\n'
+    # ITEMS HEADER — 48 chars
+    d+=BOLD_ON+t(f"{'Cant':<5}{'Detalle':<23}{'V.Unit':>10}{'V.Tot':>10}\n")+BOLD_OFF+b'-'*48+b'\n'
 
     # ITEMS ROWS — same column widths
     pzs=0
     for item in ord.get('items',[]):
         c = int(item.get('cantidad', 1)); pzs += c
-        det = str(item.get('detalle', ''))[:13].ljust(13)
-        vu  = money(item.get('vlr_unit', 0)).rjust(7)
-        vt  = money(item.get('vlr_total', 0)).rjust(6)
-        d += t(f"{c:<4} {det} {vu} {vt}\n")
+        d+=t(f"{c:<5}{str(item.get('detalle',''))[:22]:<22}{money(item.get('vlr_unit',0)):>10}{money(item.get('vlr_total',0)):>11}\n")
 
-    # TOTALS right-aligned to col 32
-    d += t(f"{'Total Pzs. '+str(pzs):<16}{'':>16}\n")
-    d += t(f"{'Subtotal:':<16}{money(ord.get('subtotal',0)):>14}\n")
-    d += t(f"{'Abono:':<16}{money(ord.get('abono',0)):>14}\n")
-    d += b'-'*32 + b'\n' + LEFT + BOLD_ON
-    estado = str(ord.get('estado_pago','PENDIENTE'))[:14]
-    d += t(f"{estado:<14}{money(ord.get('total',0)):>18}\n") + BOLD_OFF
+    # TOTALS right-aligned to col 48
+    d += t(f"{'Total Pzs. '+str(pzs):<16}{'':>32}\n")
+    d += t(f"{'Subtotal:':<16}{money(ord.get('subtotal',0)):>32}\n")
+    d += t(f"{'Abono:':<16}{money(ord.get('abono',0)):>32}\n")
+    d += b'-'*48 + b'\n' + LEFT + BOLD_ON
+    d += t(f"{str(ord.get('estado_pago','PENDIENTE'))[:28]:<28}{money(ord.get('total',0)):>20}\n") + BOLD_OFF
     
     d+=CENTER+b'\n'
     if neg.get('mensaje_pie'): d+=t(neg['mensaje_pie']+'\n')
