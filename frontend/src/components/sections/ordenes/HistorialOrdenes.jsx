@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { getHistorialOrdenes, getOrdenesStats, deleteOrden, updateOrdenEstado, entregarOrden } from '../../../services/ordenes';
+import { getHistorialOrdenes, getOrdenesStats, deleteOrden, updateOrdenEstado, entregarOrden, getOrdenDetalle } from '../../../services/ordenes';
 import PrintInvoice from '../../ui/PrintInvoice';
 import { printOrden, isPrintAvailable } from '../../../services/print';
 import './HistorialOrdenes.css';
