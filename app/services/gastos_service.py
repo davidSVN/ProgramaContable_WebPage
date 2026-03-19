@@ -92,7 +92,9 @@ def _aplicar_filtros(query, filtros: FiltrosGasto):
     if filtros.forma_pago and filtros.forma_pago != "Todos":
         query = query.where(SpentBusiness.spent_payment_method == filtros.forma_pago)
     if filtros.nombre_gasto:
-        query = query.where(SpentBusiness.spent_general_name.ilike(f"%{filtros.nombre_gasto}%"))
+        query = query.where(
+            func.unaccent(SpentBusiness.spent_general_name).ilike(func.unaccent(f"%{filtros.nombre_gasto}%"))
+        )
     if filtros.fecha_inicio:
         query = query.where(SpentBusiness.spent_date >= filtros.fecha_inicio)
     if filtros.fecha_fin:
@@ -278,8 +280,8 @@ async def contar_detalles_agencia(
     if nombre_gasto:
         stmt = stmt.where(
             or_(
-                OrderHeader.user_name.ilike(f"%{nombre_gasto}%"),
-                OrderDetail.service_name.ilike(f"%{nombre_gasto}%")
+                func.unaccent(OrderHeader.user_name).ilike(func.unaccent(f"%{nombre_gasto}%")),
+                func.unaccent(OrderDetail.service_name).ilike(func.unaccent(f"%{nombre_gasto}%"))
             )
         )
     if fecha_inicio:
@@ -316,8 +318,8 @@ async def obtener_stats_agencia(
     if nombre_gasto:
         stmt = stmt.where(
             or_(
-                OrderHeader.user_name.ilike(f"%{nombre_gasto}%"),
-                OrderDetail.service_name.ilike(f"%{nombre_gasto}%")
+                func.unaccent(OrderHeader.user_name).ilike(func.unaccent(f"%{nombre_gasto}%")),
+                func.unaccent(OrderDetail.service_name).ilike(func.unaccent(f"%{nombre_gasto}%"))
             )
         )
     if fecha_inicio:
@@ -369,8 +371,8 @@ async def obtener_resumen_agencia(
     if nombre_gasto:
         stmt = stmt.where(
             or_(
-                OrderHeader.user_name.ilike(f"%{nombre_gasto}%"),
-                OrderDetail.service_name.ilike(f"%{nombre_gasto}%")
+                func.unaccent(OrderHeader.user_name).ilike(func.unaccent(f"%{nombre_gasto}%")),
+                func.unaccent(OrderDetail.service_name).ilike(func.unaccent(f"%{nombre_gasto}%"))
             )
         )
     if fecha_inicio:
@@ -442,8 +444,8 @@ async def listar_detalles_agencia(
     if nombre_gasto:
         stmt = stmt.where(
             or_(
-                OrderHeader.user_name.ilike(f"%{nombre_gasto}%"),
-                OrderDetail.service_name.ilike(f"%{nombre_gasto}%")
+                func.unaccent(OrderHeader.user_name).ilike(func.unaccent(f"%{nombre_gasto}%")),
+                func.unaccent(OrderDetail.service_name).ilike(func.unaccent(f"%{nombre_gasto}%"))
             )
         )
     if fecha_inicio:

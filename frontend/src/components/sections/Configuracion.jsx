@@ -3,7 +3,9 @@ import './Configuracion.css';
 import { api } from '../../services/api';
 import { getSuscripcionInfo, updatePlan } from '../../services/suscripcion';
 import { getNegocioConfig, updateNegocioConfig } from '../../services/configuracion';
-import { printTest } from '../../services/print';
+import { isPrintAvailable, getPrinters, configurePrinter, printTest } from '../../services/print';
+
+const DOWNLOAD_URL = 'https://github.com/davidSVN/PrintBRidge_washflow/releases/tag/v2.0.0/WashFlow_PrintBridge.exe'
 
 /* ── Expand utility ─────────────────────────────────────── */
 const expandText = (text, abbreviations) =>
@@ -663,113 +665,6 @@ function AbreviacionesSection() {
   );
 }
 
-/* ── BusinessInfoSection ────────────────────────────────── */
-function BusinessInfoSection() {
-  const [data, setData] = useState({
-    business_name: '',
-    business_address: '',
-    business_phone: '',
-    business_logo: ''
-  });
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState(null);
-
-  useEffect(() => {
-    api.get('/settings/business')
-      .then(res => setData(res))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
-  const showToast = (msg, ok = true) => {
-    setToast({ msg, ok });
-    setTimeout(() => setToast(null), 3000);
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      const res = await api.put('/settings/business', data);
-      setData(res);
-      showToast('Información guardada correctamente');
-    } catch (err) {
-      showToast(err.message || 'Error al guardar', false);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if (loading) return null;
-
-  return (
-    <section className="ab-card">
-      <div className="ab-card-header">
-        <div className="ab-card-header__left">
-          <h2 className="ab-card-title">
-            <span className="ab-card-title__icon" aria-hidden="true">🏢</span>
-            Información del Negocio
-          </h2>
-          <p className="ab-card-subtitle">Datos que aparecerán en la factura de impresión térmica</p>
-        </div>
-        <button 
-          className={`ab-save-btn ab-save-btn--dirty`} 
-          onClick={handleSave} 
-          disabled={saving}
-        >
-          {saving ? <><span className="ab-save-spinner" /> Guardando...</> : '💾 Guardar Cambios'}
-        </button>
-      </div>
-
-      {toast && (
-        <div className={`ab-toast ${toast.ok ? 'ab-toast--ok' : 'ab-toast--err'}`} style={{ margin: '10px 20px' }}>
-          {toast.msg}
-        </div>
-      )}
-
-      <div className="ab-card-content" style={{ padding: '20px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-          <div className="ab-preview__row">
-            <label className="ab-preview__label">Nombre del Negocio:</label>
-            <input 
-              className="ab-preview__input" 
-              type="text" 
-              value={data.business_name} 
-              onChange={e => setData(d => ({ ...d, business_name: e.target.value }))}
-              placeholder="Ej: LAVALATU"
-            />
-          </div>
-          <div className="ab-preview__row">
-            <label className="ab-preview__label">Teléfono / Domicilios:</label>
-            <input 
-              className="ab-preview__input" 
-              type="text" 
-              value={data.business_phone} 
-              onChange={e => setData(d => ({ ...d, business_phone: e.target.value }))}
-              placeholder="Ej: 310 669 7376"
-            />
-          </div>
-          <div className="ab-preview__row" style={{ gridColumn: 'span 2' }}>
-            <label className="ab-preview__label">Dirección:</label>
-            <input 
-              className="ab-preview__input" 
-              type="text" 
-              value={data.business_address} 
-              onChange={e => setData(d => ({ ...d, business_address: e.target.value }))}
-              placeholder="Ej: Calle 163a #14b-25"
-            />
-          </div>
-        </div>
-
-        <div style={{ marginTop: '20px', padding: '15px', background: 'var(--background)', borderRadius: '8px', border: '1px dashed var(--border)' }}>
-          <p style={{ fontSize: '0.8rem', color: 'var(--ds-text-secondary)', marginBottom: '10px' }}>
-            <strong>Nota sobre la impresora:</strong> El navegador utilizará la impresora configurada por defecto en tu sistema operativo. Asegúrate de que tu impresora térmica de 80mm esté seleccionada como predeterminada o elígela en el diálogo de impresión.
-          </p>
-        </div>
-      </div>
-    </section>
-  );
-}
 
 /* ── PerfilNegocioSection ────────────────────────────────── */
 const LS_KEY = 'washflow_negocio_config';
@@ -1038,80 +933,97 @@ function PerfilNegocioSection() {
 /* ── PrinterSection ──────────────────────────────────────── */
 
 function PrinterSection() {
-  const [testingPrint, setTestingPrint] = useState(false);
-  const [setupOpen, setSetupOpen]       = useState(false);
+  const [printOnline, setPrintOnline]       = useState(false);
+  const [printers, setPrinters]             = useState([]);
+  const [currentPrinter, setCurrentPrinter] = useState(null);
+  const [testing, setTesting]               = useState(false);
+  const [toast, setToast]                   = useState(null);
 
-  const handleTestPrint = async () => {
-    setTestingPrint(true);
-    let negocioConfig = null;
-    try { negocioConfig = JSON.parse(localStorage.getItem('washflow_negocio_config')); } catch {}
-    await printTest(negocioConfig);
-    setTestingPrint(false);
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3000);
   };
 
+  useEffect(() => {
+    const check = async () => {
+      const ok = await isPrintAvailable();
+      setPrintOnline(ok);
+      if (ok) {
+        const p = await getPrinters();
+        setPrinters(p.available);
+        setCurrentPrinter(p.current);
+      }
+    };
+    check();
+    const i = setInterval(check, 5000);
+    return () => clearInterval(i);
+  }, []);
+
   return (
-    <section className="ab-card pt-card">
-      <div className="ab-card-header">
-        <div className="ab-card-header__left">
-          <h2 className="ab-card-title">
-            <span className="ab-card-title__icon" aria-hidden="true">🖨️</span>
-            Impresora Térmica
-          </h2>
-          <p className="ab-card-subtitle">Imprime en cualquier impresora instalada en Windows</p>
+    <div style={{background:'white',border:'1px solid #E8E3D8',
+      borderRadius:12,padding:20,marginBottom:16}}>
+      <h3 style={{fontFamily:'Syne',fontSize:16,marginBottom:12}}>
+        🖨️ Impresora Térmica
+      </h3>
+
+      {toast && (
+        <div style={{marginBottom:12,padding:'8px 12px',borderRadius:8,
+          background:'#F5F5F0',fontSize:13}}>
+          {toast}
         </div>
-        <div className="pt-status-badge">
-          <span className="pt-dot pt-dot--on pt-dot--pulse" />
-          <span className="pt-status-label">Lista para usar</span>
-        </div>
+      )}
+
+      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:16}}>
+        <div style={{width:10,height:10,borderRadius:'50%',flexShrink:0,
+          background:printOnline?'#4CAF50':'#888780',
+          boxShadow:printOnline?'0 0 0 4px rgba(76,175,80,0.2)':'none'}}/>
+        <span style={{fontSize:13,color:printOnline?'#2E7D32':'#888780'}}>
+          {printOnline
+            ? `Conectada — ${currentPrinter}`
+            : 'Sin conexión — Inicia WashFlow_PrintBridge.exe'}
+        </span>
       </div>
 
-      <div className="pt-body">
-        <p className="pt-online-label" style={{ color: 'var(--ds-text-secondary, #6B6560)', fontWeight: 400 }}>
-          Al crear una orden aparecerá el diálogo de Windows. Selecciona tu impresora térmica y haz clic en "Imprimir".
+      {printOnline && (
+        <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap'}}>
+          <select value={currentPrinter||''} onChange={async e => {
+            await configurePrinter(e.target.value);
+            setCurrentPrinter(e.target.value);
+            showToast('✅ Impresora: ' + e.target.value);
+          }} style={{flex:1,padding:'6px 10px',borderRadius:8,
+            border:'1px solid #E8E3D8',fontFamily:'DM Sans'}}>
+            {printers.map(p=><option key={p} value={p}>{p}</option>)}
+          </select>
+          <button disabled={testing} onClick={async () => {
+            setTesting(true);
+            const neg = JSON.parse(localStorage.getItem('washflow_negocio_config')||'{}');
+            const r = await printTest(neg);
+            setTesting(false);
+            showToast(r.success ? '✅ Impreso correctamente' : '❌ ' + r.reason);
+          }} style={{padding:'6px 16px',background:'#FF6B2B',color:'white',
+            border:'none',borderRadius:8,cursor:'pointer',fontFamily:'DM Sans'}}>
+            {testing ? 'Imprimiendo...' : '🖨️ Prueba'}
+          </button>
+        </div>
+      )}
+
+      <div style={{borderTop:'1px solid #E8E3D8',paddingTop:16}}>
+        <p style={{fontSize:12,color:'#888780',marginBottom:8}}>
+          {printOnline
+            ? '¿Nuevo PC? Descarga el servicio de impresión:'
+            : 'Descarga e inicia el servicio para activar la impresión:'}
         </p>
-
-        <button
-          className="pt-test-btn"
-          onClick={handleTestPrint}
-          disabled={testingPrint}
-        >
-          {testingPrint
-            ? <><span className="ab-save-spinner" /> Imprimiendo...</>
-            : '🖨️ Imprimir recibo de prueba'
-          }
-        </button>
-
-        <button
-          className="pt-setup-toggle"
-          onClick={() => setSetupOpen(o => !o)}
-          aria-expanded={setupOpen}
-        >
-          {setupOpen ? '▼' : '▶'} Configurar por primera vez
-        </button>
-
-        {setupOpen && (
-          <div className="pt-setup-body">
-            <p className="pt-offline-msg__steps">Para que el recibo se vea correctamente:</p>
-            <ol className="pt-offline-msg__list">
-              <li>Ve a <strong>Inicio → Impresoras y escáneres</strong></li>
-              <li>Haz clic en <strong>POS-80-Series → Administrar</strong></li>
-              <li>Preferencias de impresión</li>
-              <li>Tamaño de papel: <strong>80mm × 200mm</strong> (o "Receipt")</li>
-              <li>Sin márgenes → Guardar</li>
-            </ol>
-            <p style={{ fontSize: '0.82rem', color: 'var(--ds-text-secondary, #6B6560)', marginBottom: 10 }}>
-              Solo necesitas hacer esto una vez.
-            </p>
-            <button
-              className="pt-test-btn pt-test-btn--secondary"
-              onClick={() => window.open('ms-settings:printers', '_blank')}
-            >
-              ⚙️ Abrir impresoras de Windows
-            </button>
-          </div>
-        )}
+        <a href={DOWNLOAD_URL} download
+          style={{display:'inline-flex',alignItems:'center',gap:6,
+            background:'#1A1A1A',color:'white',padding:'8px 16px',
+            borderRadius:8,textDecoration:'none',fontSize:13,fontFamily:'DM Sans'}}>
+          📥 Descargar WashFlow PrintBridge v2.0
+        </a>
+        <p style={{fontSize:11,color:'#888780',marginTop:4}}>
+          Solo Windows · Sin instalación · Doble clic para iniciar
+        </p>
       </div>
-    </section>
+    </div>
   );
 }
 

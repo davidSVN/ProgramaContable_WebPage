@@ -322,7 +322,7 @@ async def listar_ordenes_b2b(
         stmt = stmt.where(func.date(OrderHeader.date) <= filtros.fecha_fin.isoformat())
     if filtros.cliente_nombre:
         stmt = stmt.join(LaundryUser, OrderHeader.user_id == LaundryUser.user_id).where(
-            LaundryUser.user_name.ilike(f"%{filtros.cliente_nombre}%")
+            func.unaccent(LaundryUser.user_name).ilike(func.unaccent(f"%{filtros.cliente_nombre}%"))
         )
     if filtros.user_id:
         stmt = stmt.where(OrderHeader.user_id == filtros.user_id)
@@ -365,7 +365,7 @@ async def contar_ordenes_b2b(
         stmt = stmt.where(func.date(OrderHeader.date) <= filtros.fecha_fin.isoformat())
     if filtros.cliente_nombre:
         stmt = stmt.join(LaundryUser, OrderHeader.user_id == LaundryUser.user_id).where(
-            LaundryUser.user_name.ilike(f"%{filtros.cliente_nombre}%")
+            func.unaccent(LaundryUser.user_name).ilike(func.unaccent(f"%{filtros.cliente_nombre}%"))
         )
     if filtros.user_id:
         stmt = stmt.where(OrderHeader.user_id == filtros.user_id)

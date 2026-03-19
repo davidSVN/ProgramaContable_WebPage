@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { getHistorialOrdenes, getOrdenesStats, deleteOrden, updateOrdenEstado, entregarOrden } from '../../../services/ordenes';
+import { getHistorialOrdenes, getOrdenesStats, deleteOrden, updateOrdenEstado, entregarOrden, getOrdenDetalle } from '../../../services/ordenes';
 import PrintInvoice from '../../ui/PrintInvoice';
 import { printOrden, isPrintAvailable } from '../../../services/print';
 import './HistorialOrdenes.css';
@@ -620,18 +620,37 @@ export default function HistorialOrdenes({ user, onNavigate }) {
   };
 
   const handleReprint = async (order) => {
-    if (printingId === order.id) return;
-    setPrintingId(order.id);
+    const orderId = order.id ?? order.order_id;
+    if (printingId === orderId) return;
+    setPrintingId(orderId);
     try {
+      let fullOrder = order;
+      // If we don't have servicios_data (common in history list), fetch it
+      if (!order.servicios_data || order.servicios_data.length === 0) {
+        try {
+          const detail = await getOrdenDetalle(orderId);
+          fullOrder = {
+            ...order,
+            servicios_data: detail.map(d => ({
+              qty: d.qty,
+              name: d.name,
+              value: d.value
+            }))
+          };
+        } catch (e) {
+          console.error("Error fetching detail for print:", e);
+        }
+      }
+
       let negocioConfig = null;
       try {
         const cached = localStorage.getItem('washflow_negocio_config');
         if (cached) negocioConfig = JSON.parse(cached);
       } catch {}
 
-      const result = await printOrden(order, negocioConfig, 1);
+      const result = await printOrden(fullOrder, negocioConfig, 1);
       if (result.success) {
-        showToast(`🖨️ Recibo #${order.id} enviado a impresora`, 'success');
+        showToast(`🖨️ Recibo #${orderId} enviado a impresora`, 'success');
       } else {
         showToast('No se pudo conectar con la impresora', 'error');
       }

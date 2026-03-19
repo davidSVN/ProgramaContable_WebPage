@@ -59,14 +59,15 @@ async def obtener_historial(
     if cliente:
         # Search by order_id (numeric), user_name, items_description, received_by_name OR user_contact
         term = cliente.strip().lstrip('#')
+        unescaped_term = f"%{term}%"
         
-        # Base conditions: text fields
+        # Base conditions: text fields (insensible a acentos y case)
         conditions = [
-            OrderHeader.user_name.ilike(f"%{term}%"),
-            OrderHeader.items_description.ilike(f"%{term}%"),
-            OrderHeader.received_by_name.ilike(f"%{term}%"),
-            OrderHeader.order_status.ilike(f"%{term}%"),
-            LaundryUser.user_contact.ilike(f"%{term}%")
+            func.unaccent(OrderHeader.user_name).ilike(func.unaccent(unescaped_term)),
+            func.unaccent(OrderHeader.items_description).ilike(func.unaccent(unescaped_term)),
+            func.unaccent(OrderHeader.received_by_name).ilike(func.unaccent(unescaped_term)),
+            func.unaccent(OrderHeader.order_status).ilike(func.unaccent(unescaped_term)),
+            func.unaccent(LaundryUser.user_contact).ilike(func.unaccent(unescaped_term))
         ]
         
         # Try numeric ID search

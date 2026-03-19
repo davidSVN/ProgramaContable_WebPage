@@ -1,183 +1,168 @@
-"""
-WashFlow PrintBridge v1.0
-Run locally on Windows PC with thermal printer connected via USB.
-Start with: python printbridge.py
-Listens on: http://localhost:8765
-"""
+import sys, os, json, base64, io, win32print
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from escpos.printer import Win32Raw
 from PIL import Image
-import base64, io, json, sys, win32print
 
 app = Flask(__name__)
 CORS(app)
 
-CONFIG_FILE = "printbridge_config.json"
+BASE = os.path.dirname(sys.executable if getattr(sys,'frozen',False) else __file__)
+CONFIG = os.path.join(BASE, 'printbridge_config.json')
 
+WIDTH = 48
+LOGO_WIDTH = 25 # Ajusta este valor para cambiar el tamaño del logo (en píxeles)
+ESC=b'\x1b'; GS=b'\x1d'
+INIT=ESC+b'@'; FONT_A=ESC+b'M\x00'; CENTER=ESC+b'a\x01'; LEFT=ESC+b'a\x00'
+BOLD_ON=ESC+b'E\x01'; BOLD_OFF=ESC+b'E\x00'
+BIG_ON=ESC+b'!\x30'; BIG_OFF=ESC+b'!\x00'
+FEED3=ESC+b'd\x03'; CUT=GS+b'V\x41\x00'
 
-def load_config():
+def cfg():
+    try: return json.load(open(CONFIG))
+    except: return {'printer_name': None}
+
+def printer(): return cfg().get('printer_name') or win32print.GetDefaultPrinter()
+
+def t(s):
+    try: return s.encode('cp858')
+    except: return s.encode('ascii','replace')
+
+def money(v):
+    n=round(float(v or 0))
+    return f"${n:,.0f}".replace(',','.')
+
+def logo_bytes(b64, max_w=LOGO_WIDTH):
     try:
-        with open(CONFIG_FILE) as f:
-            return json.load(f)
-    except Exception:
-        return {"printer_name": None}
-
-
-def get_printer():
-    config = load_config()
-    name = config.get("printer_name") or win32print.GetDefaultPrinter()
-    return Win32Raw(name)
-
-
-def fmt_money(value):
-    """Format number as Colombian pesos: 45.000"""
-    return f"{int(value):,}".replace(",", ".")
-
-
-def print_receipt(negocio: dict, orden: dict):
-    p = get_printer()
-    p.open()
-
-    try:
-        # LOGO
-        if negocio.get("logo_base64"):
-            try:
-                img_data = negocio["logo_base64"].split(",")[1]
-                img_bytes = base64.b64decode(img_data)
-                img = Image.open(io.BytesIO(img_bytes)).convert("L")
-                ratio = 384 / img.width
-                img = img.resize((384, int(img.height * ratio)), Image.LANCZOS)
-                p.set(align="center")
-                p.image(img, impl="bitImageRaster")
-            except Exception:
-                pass
-
-        # HEADER
-        p.set(align="center", bold=True, double_width=True, double_height=True)
-        p.text(f"{negocio.get('nombre', 'LAVANDERIA')}\n")
-        p.set(align="center", bold=False, double_width=False, double_height=False)
-        if negocio.get("slogan"):
-            p.text(f"{negocio['slogan']}\n")
-        if negocio.get("direccion"):
-            p.text(f"{negocio['direccion']}\n")
-        if negocio.get("nit"):
-            p.text(f"NIT: {negocio['nit']}\n")
-
-        p.text("-" * 32 + "\n")
-
-        # CONTACT
-        if negocio.get("telefono"):
-            p.set(align="center", bold=True)
-            p.text("DOMICILIOS / CONTACTO\n")
-            p.text(f"{negocio['telefono']}\n")
-            p.text("-" * 32 + "\n")
-
-        # ORDER NUMBER
-        p.set(align="center", bold=True)
-        p.text(f"ORDEN #{orden['numero']}\n\n")
-
-        # CLIENT
-        p.set(align="center", bold=False)
-        p.text("Cliente\n")
-        p.set(align="center", bold=True)
-        p.text(f"{orden['cliente'].upper()}\n")
-        p.set(align="left", bold=False)
-        if orden.get("telefono_cliente"):
-            p.text(f"Telefono : {orden['telefono_cliente']}\n")
-        p.text(f"Fecha    : {orden['fecha']}\n")
-        p.text("-" * 32 + "\n")
-
-        # ITEMS HEADER
-        p.set(bold=True)
-        p.text(f"{'Cant':<5}{'Detalle':<15}{'V.Unit':>6}{'V.Tot':>6}\n")
-        p.set(bold=False)
-        p.text("-" * 32 + "\n")
-
-        # ITEMS
-        total_pzs = 0
-        for item in orden.get("items", []):
-            cant = int(item["cantidad"])
-            total_pzs += cant
-            detalle = str(item["detalle"])[:14]
-            vlr_u = fmt_money(item["vlr_unit"])
-            vlr_t = fmt_money(item["vlr_total"])
-            p.text(f"{cant:<5}{detalle:<14}{vlr_u:>7}{vlr_t:>6}\n")
-
-        p.text("-" * 32 + "\n")
-
-        # TOTALS
-        p.text(f"Total Pzs. {total_pzs}\n")
-        p.set(align="right")
-        p.text(f"Subtotal:  {fmt_money(orden['subtotal'])}\n")
-        p.text(f"Abono:     {fmt_money(orden.get('abono', 0))}\n")
-        p.text("-" * 32 + "\n")
-        p.set(align="left", bold=True)
-        estado = orden.get("estado_pago", "PENDIENTE")
-        p.text(f"{estado:<20}{fmt_money(orden['total'])}\n")
-
-        # FOOTER
-        p.set(align="center", bold=False)
-        p.text("\n")
-        if negocio.get("mensaje_pie"):
-            p.text(f"{negocio['mensaje_pie']}\n")
-        p.text("\n\n\n")
-        p.cut()
-
-    finally:
-        p.close()
-
-
-@app.route("/print", methods=["POST"])
-def handle_print():
-    try:
-        data = request.get_json()
-        negocio = data.get("negocio", {})
-        orden = data.get("orden", {})
-        copias = int(data.get("copias", 1))
-        for _ in range(copias):
-            print_receipt(negocio, orden)
-        return jsonify({"status": "ok", "copias": copias})
+        # Decode and open image
+        img_data = base64.b64decode(b64.split(',')[1])
+        img = Image.open(io.BytesIO(img_data)).convert('L')
+        
+        # Resize maintaining aspect ratio
+        ratio = max_w / float(img.width)
+        new_h = int(float(img.height) * ratio)
+        img = img.resize((max_w, new_h), Image.LANCZOS).convert('1')
+        
+        # Width in bytes
+        wb = (img.width + 7) // 8
+        header = GS + b'v0\x00' + bytes([wb % 256, wb // 256, img.height % 256, img.height // 256])
+        
+        out = bytearray(header)
+        px = list(img.getdata())
+        for row in range(img.height):
+            for col_byte in range(wb):
+                byte = 0
+                for bit in range(8):
+                    col = col_byte * 8 + bit
+                    if col < img.width:
+                        # 0 is black in ESC/POS raster for '1' mode? 
+                        # Actually in '1' mode, 0 is often black, but img.getdata() for '1' returns 0 for black and 255 for white.
+                        # GS v 0 expects 1 for black, 0 for white.
+                        if px[row * img.width + col] == 0:
+                            byte |= (1 << (7 - bit))
+                out.append(byte)
+        return bytes(out)
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        print(f"Logo error: {e}")
+        return b''
 
+def build(neg, ord):
+    d=bytearray(INIT+FONT_A)
+    if neg.get('logo_base64'):
+        try: d+=CENTER+logo_bytes(neg['logo_base64'])+b'\n'
+        except: pass
+    d+=CENTER+BIG_ON+BOLD_ON+t((neg.get('nombre','LAVANDERIA')).upper()+'\n')+BIG_OFF+BOLD_OFF
+    for k in ['slogan','direccion']:
+        if neg.get(k): d+=t(neg[k]+'\n')
+    if neg.get('nit'): d+=t(f"NIT: {neg['nit']}\n")
+    d+=b'-'*WIDTH+b'\n'
+    if neg.get('telefono'):
+        d+=CENTER+BOLD_ON+t('DOMICILIOS / CONTACTO\n'+neg['telefono']+'\n')+BOLD_OFF+b'-'*WIDTH+b'\n'
+    d+=CENTER+BOLD_ON+t(f"ORDEN #{ord.get('numero','0')}\n")+BOLD_OFF+b'\n'
+    d+=CENTER+t('Cliente\n')+BOLD_ON+t(str(ord.get('cliente','')).upper()[:WIDTH]+'\n')+BOLD_OFF
+    if ord.get('telefono_cliente'): d+=t(f"Tel: {ord['telefono_cliente']}\n")
+    d+=t(f"Fecha: {ord.get('fecha','')}\n")+b'-'*WIDTH+b'\n'+LEFT
+    
+    # ── ITEMS SECTION — edit spaces manually here ────────────────────────────
+    # Each row uses: cant(fixed) + spaces + detalle(truncated) + spaces + vunit + spaces + vtotal
+    # Adjust the spaces in the strings below to align columns on your paper.
 
-@app.route("/status", methods=["GET"])
+    d+=BOLD_ON+t("Cant Detalle            V.Unit      V.Total\n")+BOLD_OFF
+    d+=t("-" * WIDTH + "\n")
+
+    pzs=0
+    for item in ord.get('items',[]):
+        c = int(item.get('cantidad', 1)); pzs += c
+        cant    = str(c)
+        detalle = str(item.get('detalle', ''))[:20]
+        vunit   = money(item.get('vlr_unit', 0))
+        vtotal  = money(item.get('vlr_total', 0))
+        d+=t(f"{cant:>4} {detalle:<18} {vunit:>11} {vtotal:>12}\n")
+
+    d+=b'------------------------------------------------\n'
+    d+=t(f"Total Pzs. {pzs}\n")
+    d+=t(f"Subtotal:                    {money(ord.get('subtotal',0)):>9}\n")
+    d+=t(f"Abono:                       {money(ord.get('abono',0)):>9}\n")
+    d+=b'------------------------------------------------\n'+LEFT+BOLD_ON
+    estado = str(ord.get('estado_pago','PENDIENTE'))[:20]
+    d+=t(f"{estado}          {money(ord.get('total',0)):>9}\n")+BOLD_OFF
+    
+    d+=CENTER+b'\n'
+    if neg.get('mensaje_pie'): d+=t(neg['mensaje_pie']+'\n')
+    d+=b'-'*WIDTH+b'\n'+FEED3+CUT
+    return bytes(d)
+
+def send(data):
+    p=win32print.OpenPrinter(printer())
+    try:
+        j=win32print.StartDocPrinter(p,1,('WashFlow',None,'RAW'))
+        try: win32print.StartPagePrinter(p); win32print.WritePrinter(p,data); win32print.EndPagePrinter(p)
+        finally: win32print.EndDocPrinter(p)
+    finally: win32print.ClosePrinter(p)
+
+@app.route('/status')
 def status():
     try:
-        default = win32print.GetDefaultPrinter()
-        printers = [p[2] for p in win32print.EnumPrinters(2)]
-        return jsonify({
-            "status": "online",
-            "default_printer": default,
-            "available_printers": printers,
-        })
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({'status':'online',
+            'default_printer':win32print.GetDefaultPrinter(),
+            'current_printer':cfg().get('printer_name') or win32print.GetDefaultPrinter(),
+            'available_printers':[p[2] for p in win32print.EnumPrinters(2)]})
+    except Exception as e: return jsonify({'status':'error','message':str(e)}),500
 
-
-@app.route("/configure", methods=["POST"])
-def configure():
-    data = request.get_json()
-    with open(CONFIG_FILE, "w") as f:
-        json.dump({"printer_name": data.get("printer_name")}, f)
-    return jsonify({"status": "ok"})
-
-
-if __name__ == "__main__":
-    print("=" * 50)
-    print("  WashFlow PrintBridge v1.0")
-    print("  Servidor de impresion termica")
-    print("=" * 50)
+@app.route('/print', methods=['POST'])
+def handle_print():
     try:
-        default = win32print.GetDefaultPrinter()
-        print(f"\n  Impresora detectada: {default}")
-        print(f"  Servidor listo en: http://localhost:8765")
-        print("\n  MANTEN ESTA VENTANA ABIERTA")
-        print("  Para detener: Ctrl+C")
-        print("=" * 50 + "\n")
-    except Exception as e:
-        print(f"\n  ERROR: No se detecto impresora: {e}")
-        print("  Verifica que la impresora este conectada")
-        print("=" * 50 + "\n")
-    app.run(host="127.0.0.1", port=8765, debug=False)
+        b=request.get_json()
+        rec=build(b.get('negocio',{}),b.get('orden',{}))
+        for _ in range(int(b.get('copias',1))): send(rec)
+        return jsonify({'status':'ok','printer':printer()})
+    except Exception as e: return jsonify({'status':'error','message':str(e)}),500
+
+@app.route('/configure', methods=['POST'])
+def configure():
+    json.dump({'printer_name':request.get_json().get('printer_name')},open(CONFIG,'w'))
+    return jsonify({'status':'ok'})
+
+@app.route('/test', methods=['POST'])
+def test():
+    try:
+        neg=request.get_json() or {}
+        ord={'numero':'0000','cliente':'CLIENTE PRUEBA',
+             'telefono_cliente':'3100000000','fecha':'PRUEBA',
+             'items':[{'cantidad':1,'detalle':'Prueba','vlr_unit':10000,'vlr_total':10000}],
+             'subtotal':10000,'abono':0,'total':10000,'estado_pago':'PRUEBA'}
+        send(build(neg,ord))
+        return jsonify({'status':'ok','printer':printer()})
+    except Exception as e: return jsonify({'status':'error','message':str(e)}),500
+
+if __name__=='__main__':
+    print(f"PrintBridge v2.0 — {win32print.GetDefaultPrinter()} — localhost:8765")
+    app.run(host='127.0.0.1',port=8765,debug=False)
+
+@app.route('/debug', methods=['POST'])
+def debug():
+    b = request.get_json()
+    rec = build(b.get('negocio', {}), b.get('orden', {}))
+    with open('debug_receipt.bin', 'wb') as f:
+        f.write(rec)
+    return jsonify({'status': 'ok', 'bytes': len(rec)})
+

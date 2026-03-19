@@ -10,10 +10,6 @@
         size: 80mm auto;
     }
 
-    body * {
-        visibility: hidden;
-    }
-
     .print-area, .print-area * {
         visibility: visible;
     }

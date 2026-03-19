@@ -7,7 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Optional
 
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, func
 
 from app.schemas import ProveedorUpdate
 from sqlalchemy.exc import IntegrityError
@@ -59,11 +59,17 @@ async def listar(
         query = query.where(Provider.tenant_id == tenant_id)
 
     if search_names:
-        conds = [Provider.prov_name.ilike(f"%{name}%") for name in search_names]
+        conds = [
+            func.unaccent(Provider.prov_name).ilike(func.unaccent(f"%{name}%")) 
+            for name in search_names
+        ]
         query = query.where(or_(*conds))
 
     if search_contacts:
-        conds = [Provider.prov_contact.ilike(f"%{contact}%") for contact in search_contacts]
+        conds = [
+            func.unaccent(Provider.prov_contact).ilike(func.unaccent(f"%{contact}%")) 
+            for contact in search_contacts
+        ]
         query = query.where(or_(*conds))
 
     result = await db.execute(query.order_by(Provider.prov_name))

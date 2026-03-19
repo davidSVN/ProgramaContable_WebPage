@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(pyinstaller --onefile --noconsole --name \"WashFlow_PrintBridge\" printbridge.py)"
     ]
   }
 }

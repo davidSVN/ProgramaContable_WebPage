@@ -15,16 +15,20 @@ async def listar(
     user_institute: Optional[str] = None,
     search: Optional[str] = None
 ) -> List[Service]:
-    """Lista servicios de un tenant con filtros opcionales."""
+    """Lista servicios de un tenant con filtros opcionales (case/accent insensitive)."""
     query = select(Service)
     if tenant_id is not None:
         query = query.where(Service.tenant_id == tenant_id)
     
     if user_institute:
-        query = query.where(Service.user_institute == user_institute)
+        # Usar ilike para ignorar case
+        query = query.where(Service.user_institute.ilike(user_institute))
     
     if search:
-        query = query.where(Service.service_name.ilike(f"%{search}%"))
+        # Usar unaccent + ilike para ignorar tildes y case
+        query = query.where(
+            func.unaccent(Service.service_name).ilike(func.unaccent(f"%{search}%"))
+        )
         
     result = await db.execute(query.order_by(Service.service_name))
     return result.scalars().all()
@@ -140,7 +144,7 @@ async def obtener_stats(db: AsyncSession, tenant_id: int) -> dict:
     stmt_b2c = select(
         func.count(Service.service_id).label("count"),
         func.avg(Service.service_value).label("avg_price")
-    ).where(Service.user_institute == "usuario")
+    ).where(Service.user_institute.ilike("usuario"))
     
     if tenant_id is not None:
         stmt_b2c = stmt_b2c.where(Service.tenant_id == tenant_id)
@@ -152,7 +156,7 @@ async def obtener_stats(db: AsyncSession, tenant_id: int) -> dict:
     stmt_b2b = select(
         func.count(Service.service_id).label("count"),
         func.avg(Service.service_value).label("avg_price")
-    ).where(Service.user_institute == "instituto")
+    ).where(Service.user_institute.ilike("instituto"))
     
     if tenant_id is not None:
         stmt_b2b = stmt_b2b.where(Service.tenant_id == tenant_id)

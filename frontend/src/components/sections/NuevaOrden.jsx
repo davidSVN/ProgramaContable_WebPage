@@ -1184,8 +1184,7 @@ export default function NuevaOrden() {
         ...result,
         servicios_data: items.map(i => ({
           qty: i.quantity,
-          service_name: i.service_name,
-          unit_price: i.unit_price,
+          name: i.service_name,
           value: i.unit_price,
         })),
         user_contact: selectedClient?.user_contact || '',
