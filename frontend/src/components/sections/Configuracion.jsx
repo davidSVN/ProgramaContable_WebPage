@@ -674,6 +674,7 @@ function PerfilNegocioSection() {
     nombre: '', slogan: '', direccion: '',
     telefono: '', nit: '', mensaje_pie: '¡GRACIAS POR TU PREFERENCIA!',
     logo_base64: null,
+    logo_width: 50,
   });
   const [saving, setSaving]         = useState(false);
   const [dirty, setDirty]           = useState(false);
@@ -864,6 +865,20 @@ function PerfilNegocioSection() {
                   placeholder="Ej: 900.123.456-7"
                 />
               </div>
+              <div className="pn-field">
+                <label className="pn-label" htmlFor="pn-logo-w">Ancho del Logo (píxeles)</label>
+                <input
+                  id="pn-logo-w"
+                  className="pn-input"
+                  type="number"
+                  min="20"
+                  max="500"
+                  value={config.logo_width || 50}
+                  onChange={e => update('logo_width', parseInt(e.target.value) || 0)}
+                  placeholder="Ej: 150"
+                  title="Ancho del logo en el papel térmico (80mm son aprox 576 píxeles)"
+                />
+              </div>
             </div>
           </div>
 
@@ -911,7 +926,15 @@ function PerfilNegocioSection() {
           <div className="pn-receipt" aria-label="Vista previa del recibo térmico">
             {config.logo_base64 && (
               <div className="pn-receipt__logo">
-                <img src={config.logo_base64} alt="Logo" style={{ maxWidth: 120, maxHeight: 70, objectFit: 'contain' }} />
+                <img 
+                  src={config.logo_base64} 
+                  alt="Logo" 
+                  style={{ 
+                    maxWidth: Math.min((config.logo_width || 50) * 0.5, 180), 
+                    maxHeight: 100, 
+                    objectFit: 'contain' 
+                  }} 
+                />
               </div>
             )}
             <div className="pn-receipt__name">{config.nombre || 'NOMBRE DEL NEGOCIO'}</div>
