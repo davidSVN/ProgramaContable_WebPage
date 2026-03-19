@@ -10,6 +10,7 @@ BASE = os.path.dirname(sys.executable if getattr(sys,'frozen',False) else __file
 CONFIG = os.path.join(BASE, 'printbridge_config.json')
 
 WIDTH = 48
+LOGO_WIDTH = 50 # Ajusta este valor para cambiar el tamaño del logo (en píxeles)
 ESC=b'\x1b'; GS=b'\x1d'
 INIT=ESC+b'@'; CENTER=ESC+b'a\x01'; LEFT=ESC+b'a\x00'
 BOLD_ON=ESC+b'E\x01'; BOLD_OFF=ESC+b'E\x00'
@@ -30,7 +31,7 @@ def money(v):
     n=round(float(v or 0))
     return f"${n:,.0f}".replace(',','.')
 
-def logo_bytes(b64, max_w=192):
+def logo_bytes(b64, max_w=LOGO_WIDTH):
     img=Image.open(io.BytesIO(base64.b64decode(b64.split(',')[1]))).convert('L')
     r=max_w/img.width
     img=img.resize((max_w,int(img.height*r)),Image.LANCZOS).convert('1')
@@ -73,21 +74,28 @@ def build(neg, ord):
     if ord.get('telefono_cliente'): d+=t(f"Tel: {ord['telefono_cliente']}\n")
     d+=t(f"Fecha: {ord.get('fecha','')}\n")+b'-'*WIDTH+b'\n'
     
-    # ITEMS HEADER — 48 chars
-    d+=BOLD_ON+t(f"{'Cant':<5}{'Detalle':<23}{'V.Unit':>10}{'V.Tot':>10}\n")+BOLD_OFF+b'-'*48+b'\n'
+    # ITEMS HEADER — Dinámico según WIDTH
+    col1, col2, col3, col4 = 5, (WIDTH - 25), 10, 10
+    d+=BOLD_ON+t(f"{'Cant':<{col1}}{'Detalle':<{col2}}{'V.Unit':>{col3}}{'V.Tot':>{col4}}\n")+BOLD_OFF+b'-'*WIDTH+b'\n'
 
-    # ITEMS ROWS — same column widths
+    # ITEMS ROWS
     pzs=0
     for item in ord.get('items',[]):
         c = int(item.get('cantidad', 1)); pzs += c
-        d+=t(f"{c:<5}{str(item.get('detalle',''))[:22]:<22}{money(item.get('vlr_unit',0)):>10}{money(item.get('vlr_total',0)):>11}\n")
+        detalle = str(item.get('detalle',''))[:col2-1]
+        d+=t(f"{c:<{col1}}{detalle:<{col2}}{money(item.get('vlr_unit',0)):>{col3}}{money(item.get('vlr_total',0)):>{col4+1}}\n")
 
-    # TOTALS right-aligned to col 48
-    d += t(f"{'Total Pzs. '+str(pzs):<16}{'':>32}\n")
-    d += t(f"{'Subtotal:':<16}{money(ord.get('subtotal',0)):>32}\n")
-    d += t(f"{'Abono:':<16}{money(ord.get('abono',0)):>32}\n")
-    d += b'-'*48 + b'\n' + LEFT + BOLD_ON
-    d += t(f"{str(ord.get('estado_pago','PENDIENTE'))[:28]:<28}{money(ord.get('total',0)):>20}\n") + BOLD_OFF
+    # TOTALS right-aligned
+    label_w = WIDTH // 2
+    val_w = WIDTH - label_w
+    d += t(f"{('Total Pzs. '+str(pzs)):<{label_w}}{'':>{val_w}}\n")
+    d += t(f"{'Subtotal:':<{label_w}}{money(ord.get('subtotal',0)):>{val_w}}\n")
+    d += t(f"{'Abono:':<{label_w}}{money(ord.get('abono',0)):>{val_w}}\n")
+    d += b'-'*WIDTH + b'\n' + LEFT + BOLD_ON
+    
+    # Pie de totales y estado pago
+    estado_w = WIDTH - 20
+    d += t(f"{str(ord.get('estado_pago','PENDIENTE'))[:estado_w]:<{estado_w}}{money(ord.get('total',0)):>20}\n") + BOLD_OFF
     
     d+=CENTER+b'\n'
     if neg.get('mensaje_pie'): d+=t(neg['mensaje_pie']+'\n')
