@@ -620,14 +620,15 @@ export default function HistorialOrdenes({ user, onNavigate }) {
   };
 
   const handleReprint = async (order) => {
-    if (printingId === order.order_id) return;
-    setPrintingId(order.order_id);
+    const orderId = order.id ?? order.order_id;
+    if (printingId === orderId) return;
+    setPrintingId(orderId);
     try {
       let fullOrder = order;
       // If we don't have servicios_data (common in history list), fetch it
       if (!order.servicios_data || order.servicios_data.length === 0) {
         try {
-          const detail = await getOrdenDetalle(order.order_id);
+          const detail = await getOrdenDetalle(orderId);
           fullOrder = {
             ...order,
             servicios_data: detail.map(d => ({
@@ -649,7 +650,7 @@ export default function HistorialOrdenes({ user, onNavigate }) {
 
       const result = await printOrden(fullOrder, negocioConfig, 1);
       if (result.success) {
-        showToast(`🖨️ Recibo #${order.order_id} enviado a impresora`, 'success');
+        showToast(`🖨️ Recibo #${orderId} enviado a impresora`, 'success');
       } else {
         showToast('No se pudo conectar con la impresora', 'error');
       }
