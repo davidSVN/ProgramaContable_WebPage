@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import './Configuracion.css';
 import { api } from '../../services/api';
 import { getSuscripcionInfo, updatePlan } from '../../services/suscripcion';
+import { PLAN_PRICES, createPayment, redirectToWompiCheckout } from '../../services/wompi';
 import { getNegocioConfig, updateNegocioConfig } from '../../services/configuracion';
 import { isPrintAvailable, getPrinters, configurePrinter, printTest } from '../../services/print';
 
@@ -30,50 +31,108 @@ const PLAN_CLASSES = { none: 'ab-plan-pill--none', basic: 'ab-plan-pill--basic',
 const BASIC_FEATURES  = ['Crear y gestionar órdenes', 'Historial de clientes', 'Control de gastos', 'Historial de órdenes', 'Facturación B2B'];
 const PREMIUM_FEATURES = ['Todo el plan Basic', 'IA & Reportes avanzados', 'Segmentación RFM', 'Predicciones de demanda', 'Detección de churn', 'Oportunidades de descuento'];
 
-/* ── PlanModal ───────────────────────────────────────────── */
+/* ── PlanModal con Wompi ──────────────────────────────── */
 function PlanModal({ currentPlan, onClose, onChanged }) {
   const [loading, setLoading] = useState(null);
   const [toast, setToast] = useState(null);
+  const [selectedPeriod, setSelectedPeriod] = useState('monthly');
 
   const showToast = (msg, ok = true) => {
     setToast({ msg, ok });
-    setTimeout(() => setToast(null), 3000);
+    setTimeout(() => setToast(null), 4000);
   };
 
   const handleSelect = async (plan) => {
     if (plan === currentPlan) {
-      showToast(`Ya tienes este plan`, false);
+      showToast('Ya tienes este plan', false);
       return;
     }
+
     setLoading(plan);
     try {
-      await updatePlan(plan);
-      localStorage.setItem('washflow_plan', plan);
-      showToast(`✅ Plan actualizado a ${PLAN_LABELS[plan]}`);
-      setTimeout(() => { onChanged(plan); onClose(); }, 1500);
+      const paymentData = await createPayment(plan, selectedPeriod);
+
+      const userEmail = localStorage.getItem('washflow_email') || '';
+      const userName = localStorage.getItem('washflow_username') || '';
+
+      redirectToWompiCheckout(paymentData, userEmail, userName);
+
     } catch (err) {
-      showToast(err.message || 'Error al actualizar plan', false);
-    } finally {
+      showToast(err.message || 'Error al iniciar el pago', false);
       setLoading(null);
     }
+  };
+
+  const getPrice = (plan) => {
+    const prices = PLAN_PRICES[plan];
+    if (!prices) return { label: '', savings: '' };
+    return prices[selectedPeriod] || prices.monthly;
   };
 
   return (
     <div className="ab-modal-overlay" onClick={onClose}>
       <div className="ab-modal" onClick={e => e.stopPropagation()}>
         <div className="ab-modal-header">
-          <h2 className="ab-modal-title">Cambiar plan de suscripción</h2>
+          <h2 className="ab-modal-title">Elegir plan de suscripción</h2>
           <button className="ab-modal-close" onClick={onClose} aria-label="Cerrar">✕</button>
         </div>
 
-        {toast && <div className={`ab-toast ${toast.ok ? 'ab-toast--ok' : 'ab-toast--err'}`}>{toast.msg}</div>}
+        {toast && (
+          <div className={`ab-toast ${toast.ok ? 'ab-toast--ok' : 'ab-toast--err'}`}>
+            {toast.msg}
+          </div>
+        )}
+
+        {/* Selector de período */}
+        <div style={{
+          display: 'flex', justifyContent: 'center', gap: '4px',
+          margin: '0 0 20px', padding: '4px',
+          background: '#F5F0E8', borderRadius: '8px', width: 'fit-content',
+          marginLeft: 'auto', marginRight: 'auto'
+        }}>
+          <button
+            onClick={() => setSelectedPeriod('monthly')}
+            style={{
+              padding: '8px 20px', border: 'none', borderRadius: '6px',
+              cursor: 'pointer', fontFamily: 'DM Sans', fontSize: '14px', fontWeight: 600,
+              background: selectedPeriod === 'monthly' ? '#1A1A1A' : 'transparent',
+              color: selectedPeriod === 'monthly' ? '#fff' : '#6B6B6B',
+              transition: 'all 0.2s',
+            }}
+          >
+            Mensual
+          </button>
+          <button
+            onClick={() => setSelectedPeriod('yearly')}
+            style={{
+              padding: '8px 20px', border: 'none', borderRadius: '6px',
+              cursor: 'pointer', fontFamily: 'DM Sans', fontSize: '14px', fontWeight: 600,
+              background: selectedPeriod === 'yearly' ? '#1A1A1A' : 'transparent',
+              color: selectedPeriod === 'yearly' ? '#fff' : '#6B6B6B',
+              transition: 'all 0.2s',
+            }}
+          >
+            Anual
+            <span style={{
+              marginLeft: '6px', fontSize: '11px', padding: '2px 6px',
+              background: '#38A169', color: '#fff', borderRadius: '4px',
+            }}>
+              -17%
+            </span>
+          </button>
+        </div>
 
         <div className="ab-modal-plans">
           {/* Basic */}
           <div className={`ab-modal-plan ${currentPlan === 'basic' ? 'ab-modal-plan--current' : ''}`}>
             {currentPlan === 'basic' && <span className="ab-modal-current-badge">Plan actual</span>}
             <h3 className="ab-modal-plan__name">Basic</h3>
-            <p className="ab-modal-plan__price">Próximamente</p>
+            <p className="ab-modal-plan__price">{getPrice('basic').label}</p>
+            {selectedPeriod === 'yearly' && getPrice('basic').savings && (
+              <p style={{ fontSize: '12px', color: '#38A169', marginTop: '-8px', marginBottom: '8px' }}>
+                {getPrice('basic').savings}
+              </p>
+            )}
             <ul className="ab-modal-plan__features">
               {BASIC_FEATURES.map(f => <li key={f}><span>✓</span>{f}</li>)}
             </ul>
@@ -82,7 +141,11 @@ function PlanModal({ currentPlan, onClose, onChanged }) {
               onClick={() => handleSelect('basic')}
               disabled={loading !== null}
             >
-              {loading === 'basic' ? <><span className="ab-save-spinner" /> Activando...</> : 'Activar Basic →'}
+              {loading === 'basic' ? (
+                <><span className="ab-save-spinner" /> Redirigiendo a pago...</>
+              ) : (
+                'Pagar Basic →'
+              )}
             </button>
           </div>
 
@@ -90,7 +153,12 @@ function PlanModal({ currentPlan, onClose, onChanged }) {
           <div className={`ab-modal-plan ab-modal-plan--premium ${currentPlan === 'premium' ? 'ab-modal-plan--current' : ''}`}>
             {currentPlan === 'premium' && <span className="ab-modal-current-badge ab-modal-current-badge--premium">Plan actual</span>}
             <h3 className="ab-modal-plan__name ab-modal-plan__name--premium">Premium</h3>
-            <p className="ab-modal-plan__price">Próximamente</p>
+            <p className="ab-modal-plan__price">{getPrice('premium').label}</p>
+            {selectedPeriod === 'yearly' && getPrice('premium').savings && (
+              <p style={{ fontSize: '12px', color: '#38A169', marginTop: '-8px', marginBottom: '8px' }}>
+                {getPrice('premium').savings}
+              </p>
+            )}
             <ul className="ab-modal-plan__features ab-modal-plan__features--premium">
               {PREMIUM_FEATURES.map(f => <li key={f}><span>✓</span>{f}</li>)}
             </ul>
@@ -99,10 +167,22 @@ function PlanModal({ currentPlan, onClose, onChanged }) {
               onClick={() => handleSelect('premium')}
               disabled={loading !== null}
             >
-              {loading === 'premium' ? <><span className="ab-save-spinner" /> Activando...</> : 'Activar Premium →'}
+              {loading === 'premium' ? (
+                <><span className="ab-save-spinner" /> Redirigiendo a pago...</>
+              ) : (
+                'Pagar Premium →'
+              )}
             </button>
           </div>
         </div>
+
+        <p style={{
+          textAlign: 'center', fontSize: '12px', color: '#6B6B6B',
+          marginTop: '16px', padding: '0 16px'
+        }}>
+          Serás redirigido a Wompi para completar el pago de forma segura.
+          Aceptamos tarjeta, Nequi, PSE, Bancolombia QR y Daviplata.
+        </p>
       </div>
     </div>
   );
