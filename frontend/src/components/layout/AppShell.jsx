@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
+import PlanExpiryBanner from '../PlanExpiryBanner';
 import './AppShell.css';
 
 // Sections
@@ -50,6 +51,13 @@ export default function AppShell({ user }) {
     try { localStorage.setItem('washflow_sidebar', next ? 'collapsed' : 'expanded'); } catch {}
   };
 
+  // Permite que el banner redirija a Configuración
+  useEffect(() => {
+    const handler = () => setActiveSection('configuracion');
+    window.addEventListener('washflow:open-configuracion', handler);
+    return () => window.removeEventListener('washflow:open-configuracion', handler);
+  }, []);
+
   const ActiveSection = SECTIONS[activeSection] || Usuarios;
 
   return (
@@ -68,6 +76,8 @@ export default function AppShell({ user }) {
           user={user}
           onNavigate={setActiveSection}
         />
+
+        <PlanExpiryBanner />
 
         <main className="content-area" id="main-content" tabIndex={-1}>
           <div className="section-panel" key={activeSection}>

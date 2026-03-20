@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from dotenv import load_dotenv
 
-from app.models import PaymentTransaction, Tenant
+from app.models import PaymentTransaction, Tenant, AppUser
 
 load_dotenv()
 
@@ -26,14 +26,20 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 PLAN_PRICES = {
     "basic": {
-        "monthly": 4990000,     # $49.900 COP
+        "monthly": 990000,     # $49.900 COP
         "yearly": 47900000,     # $479.000 COP (ahorra 2 meses)
     },
     "premium": {
-        "monthly": 8990000,     # $89.900 COP
+        "monthly": 890000,     # $89.900 COP 8990000 -> se le agregan dos ceros siempre
         "yearly": 86200000,     # $862.000 COP (ahorra 2 meses)
     },
 }
+    # "monthly": 4990000,     # $49.900 COP
+    #     "yearly": 47900000,     # $479.000 COP (ahorra 2 meses)
+    # },
+    # "premium": {
+    #     "monthly": 8990000,     # $89.900 COP
+    #     "yearly": 86200000,  
 
 
 def get_price(plan: str, period: str) -> int:
@@ -215,3 +221,181 @@ async def verify_transaction_with_wompi(transaction_id: str) -> Optional[dict]:
     except Exception:
         pass
     return None
+
+# ─── Tokenización y cobro recurrente ─────────────────────────────────────────
+
+async def get_acceptance_token() -> str:
+    """
+    Obtiene el token de aceptación de términos de Wompi.
+    Requerido para crear fuentes de pago.
+    """
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{WOMPI_API_URL}/merchants/{WOMPI_PUBLIC_KEY}",
+        )
+        data = response.json().get("data", {})
+        return data.get("presigned_acceptance", {}).get("acceptance_token", "")
+
+
+async def tokenize_card_and_create_source(
+    token: str,
+    customer_email: str,
+    acceptance_token: str,
+) -> dict:
+    """
+    Crea una fuente de pago en Wompi a partir de un token de tarjeta.
+    Retorna el payment_source_id y datos de la tarjeta.
+    """
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{WOMPI_API_URL}/payment_sources",
+            json={
+                "type": "CARD",
+                "token": token,
+                "customer_email": customer_email,
+                "acceptance_token": acceptance_token,
+            },
+            headers={"Authorization": f"Bearer {WOMPI_PRIVATE_KEY}"},
+        )
+
+        if response.status_code not in (200, 201):
+            raise Exception(f"Error creando fuente de pago: {response.text}")
+
+        data = response.json().get("data", {})
+        return {
+            "payment_source_id": data.get("id"),
+            "last_four": data.get("public_data", {}).get("last_four"),
+            "brand": data.get("public_data", {}).get("type"),
+        }
+
+
+async def charge_with_payment_source(
+    payment_source_id: int,
+    amount_in_cents: int,
+    reference: str,
+    customer_email: str,
+) -> dict:
+    """
+    Cobra automáticamente usando una fuente de pago guardada.
+    No requiere intervención del usuario.
+    """
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{WOMPI_API_URL}/transactions",
+            json={
+                "amount_in_cents": amount_in_cents,
+                "currency": "COP",
+                "customer_email": customer_email,
+                "reference": reference,
+                "payment_source_id": payment_source_id,
+                "recurrent": True,
+            },
+            headers={"Authorization": f"Bearer {WOMPI_PRIVATE_KEY}"},
+        )
+
+        if response.status_code not in (200, 201):
+            raise Exception(f"Error en cobro recurrente: {response.text}")
+
+        return response.json().get("data", {})
+
+
+async def process_recurring_renewals(db: AsyncSession) -> list:
+    """
+    Busca tenants cuyo plan vence HOY o ya venció,
+    que tengan auto_renew=True y payment_source_id,
+    e intenta cobrarles automáticamente.
+    """
+    from sqlalchemy import and_, or_
+
+    now = datetime.utcnow()
+
+    stmt = select(Tenant).where(
+        and_(
+            Tenant.plan.in_(["basic", "premium"]),
+            Tenant.wompi_payment_source_id.isnot(None),
+            Tenant.auto_renew == True,
+            Tenant.plan_expires_at <= now,
+            or_(
+                Tenant.renewal_failed_at.is_(None),
+                Tenant.renewal_failed_at < now - timedelta(hours=24),
+            ),
+        )
+    )
+
+    result = await db.execute(stmt)
+    tenants = result.scalars().all()
+
+    results = []
+
+    for tenant in tenants:
+        try:
+            # Buscar último período de facturación
+            last_tx_stmt = (
+                select(PaymentTransaction)
+                .where(
+                    PaymentTransaction.tenant_id == tenant.id,
+                    PaymentTransaction.status == "APPROVED",
+                )
+                .order_by(PaymentTransaction.created_at.desc())
+                .limit(1)
+            )
+            last_tx_result = await db.execute(last_tx_stmt)
+            last_tx = last_tx_result.scalars().first()
+
+            billing_period = last_tx.billing_period if last_tx else "monthly"
+            amount = get_price(tenant.plan, billing_period)
+            reference = generate_reference(tenant.id)
+
+            # Obtener email del admin del tenant
+            admin_stmt = (
+                select(AppUser)
+                .where(AppUser.tenant_id == tenant.id, AppUser.role == "admin")
+                .limit(1)
+            )
+            admin_result = await db.execute(admin_stmt)
+            admin = admin_result.scalars().first()
+
+            if not admin:
+                continue
+
+            # Crear registro de transacción pendiente
+            transaction = PaymentTransaction(
+                tenant_id=tenant.id,
+                reference=reference,
+                plan=tenant.plan,
+                billing_period=billing_period,
+                amount_in_cents=amount,
+                currency="COP",
+                status="PENDING",
+            )
+            db.add(transaction)
+            await db.commit()
+
+            # Cobrar con la fuente de pago guardada
+            wompi_response = await charge_with_payment_source(
+                payment_source_id=tenant.wompi_payment_source_id,
+                amount_in_cents=amount,
+                reference=reference,
+                customer_email=admin.email,
+            )
+
+            # El webhook se encarga de actualizar el estado final
+            results.append({
+                "tenant_id": tenant.id,
+                "reference": reference,
+                "status": "charge_initiated",
+                "wompi_id": wompi_response.get("id"),
+            })
+
+        except Exception as e:
+            tenant.renewal_failed_at = now
+            tenant.grace_period_ends_at = now + timedelta(days=5)
+            await db.commit()
+
+            results.append({
+                "tenant_id": tenant.id,
+                "status": "failed",
+                "error": str(e),
+            })
+
+    return results

@@ -19,6 +19,14 @@ class Tenant(Base):
     plan_expires_at = Column(DateTime, nullable=True)
     last_payment_reference = Column(String(100), nullable=True)
 
+    # Cobro recurrente / tokenización
+    wompi_payment_source_id = Column(Integer, nullable=True)
+    card_last_four = Column(String(4), nullable=True)
+    card_brand = Column(String(20), nullable=True)
+    auto_renew = Column(Boolean, default=True, nullable=False)
+    renewal_failed_at = Column(DateTime, nullable=True)
+    grace_period_ends_at = Column(DateTime, nullable=True)
+
     # Relación
     usuarios = relationship("AppUser", back_populates="tenant", lazy="selectin")
 

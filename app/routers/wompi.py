@@ -1,4 +1,6 @@
 import logging
+import os
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -191,3 +193,119 @@ async def payment_history(
         current_plan=tenant.plan if tenant else "none",
         plan_expires_at=tenant.plan_expires_at if tenant else None,
     )
+
+
+@router.get("/subscription-status")
+async def subscription_status(
+    db: AsyncSession = Depends(get_db),
+    current_user: AppUser = Depends(get_current_user),
+):
+    """Estado completo de la suscripción: días restantes, tarjeta guardada, auto-renovación."""
+    if not current_user.tenant_id:
+        return {"plan": "none", "days_remaining": 0}
+
+    tenant = await db.get(Tenant, current_user.tenant_id)
+    if not tenant:
+        return {"plan": "none", "days_remaining": 0}
+
+    days_remaining = 0
+    if tenant.plan_expires_at:
+        delta = tenant.plan_expires_at - datetime.utcnow()
+        days_remaining = max(0, delta.days)
+
+    return {
+        "plan": tenant.plan,
+        "plan_expires_at": tenant.plan_expires_at.isoformat() if tenant.plan_expires_at else None,
+        "days_remaining": days_remaining,
+        "auto_renew": tenant.auto_renew,
+        "has_payment_source": tenant.wompi_payment_source_id is not None,
+        "card_last_four": tenant.card_last_four,
+        "card_brand": tenant.card_brand,
+        "renewal_failed": tenant.renewal_failed_at is not None,
+        "grace_period_ends_at": tenant.grace_period_ends_at.isoformat() if tenant.grace_period_ends_at else None,
+        "is_in_grace_period": (
+            tenant.grace_period_ends_at is not None
+            and tenant.grace_period_ends_at > datetime.utcnow()
+        ),
+    }
+
+
+@router.post("/save-payment-source")
+async def save_payment_source(
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: AppUser = Depends(get_current_user),
+):
+    """
+    Recibe un token de tarjeta del widget de Wompi,
+    crea una fuente de pago y la guarda en el tenant.
+    """
+    token = body.get("token")
+    if not token:
+        raise HTTPException(status_code=400, detail="Token requerido")
+
+    if not current_user.tenant_id:
+        raise HTTPException(status_code=400, detail="Usuario sin tenant")
+
+    try:
+        acceptance_token = await wompi_service.get_acceptance_token()
+
+        source_data = await wompi_service.tokenize_card_and_create_source(
+            token=token,
+            customer_email=current_user.email,
+            acceptance_token=acceptance_token,
+        )
+
+        tenant = await db.get(Tenant, current_user.tenant_id)
+        if tenant:
+            tenant.wompi_payment_source_id = source_data["payment_source_id"]
+            tenant.card_last_four = source_data.get("last_four", "")
+            tenant.card_brand = source_data.get("brand", "")
+            tenant.auto_renew = True
+            await db.commit()
+
+        return {
+            "status": "ok",
+            "last_four": source_data.get("last_four"),
+            "brand": source_data.get("brand"),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/toggle-auto-renew")
+async def toggle_auto_renew(
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: AppUser = Depends(get_current_user),
+):
+    """Activa o desactiva la renovación automática del tenant."""
+    if not current_user.tenant_id:
+        raise HTTPException(status_code=400, detail="Usuario sin tenant")
+
+    tenant = await db.get(Tenant, current_user.tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant no encontrado")
+
+    tenant.auto_renew = body.get("auto_renew", True)
+    await db.commit()
+
+    return {"auto_renew": tenant.auto_renew}
+
+
+@router.post("/process-renewals")
+async def process_renewals_endpoint(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Endpoint interno para procesar renovaciones automáticas.
+    Protegido por CRON_SECRET en el header X-Cron-Secret.
+    Llamar diariamente desde cron-job.org o similar.
+    """
+    cron_secret = os.getenv("CRON_SECRET", "")
+    if not cron_secret or request.headers.get("X-Cron-Secret") != cron_secret:
+        raise HTTPException(status_code=401, detail="No autorizado")
+
+    results = await wompi_service.process_recurring_renewals(db)
+    return {"processed": len(results), "results": results}
