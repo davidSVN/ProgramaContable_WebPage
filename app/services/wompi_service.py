@@ -205,6 +205,31 @@ async def process_failed_transaction(
     return transaction
 
 
+async def find_transaction_by_reference(reference: str) -> Optional[dict]:
+    """
+    Busca una transacción en Wompi por NUESTRA referencia (WF-xxx-timestamp).
+    Útil cuando el webhook no llegó y no tenemos wompi_transaction_id todavía.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                f"{WOMPI_API_URL}/transactions",
+                params={"reference": reference},
+                headers={"Authorization": f"Bearer {WOMPI_PRIVATE_KEY}"},
+            )
+            if response.status_code == 200:
+                result = response.json()
+                data = result.get("data", [])
+                if isinstance(data, list) and len(data) > 0:
+                    return data[0]
+                elif isinstance(data, dict) and data.get("id"):
+                    return data
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Error consultando Wompi por referencia {reference}: {e}")
+    return None
+
+
 async def verify_transaction_with_wompi(transaction_id: str) -> Optional[dict]:
     """
     Consulta directamente a Wompi el estado de una transacción.
