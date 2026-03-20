@@ -13,7 +13,7 @@ export const DEFAULT_TEMPLATES = {
     variables: ['nombre', 'negocio', 'orden_id', 'saldo', 'descripcion'],
     default: `Hola {{nombre}}, te saludamos de *{{negocio}}* 👋
 
-Te recordamos que tienes un saldo pendiente de *${{saldo}}* correspondiente a la orden #{{orden_id}}.
+Te recordamos que tienes un saldo pendiente de *\${{saldo}}* correspondiente a la orden #{{orden_id}}.
 🧺 _{{descripcion}}_
 
 ¿Cuándo podrías pasar a cancelarlo? ¡Muchas gracias! 🙏`,
