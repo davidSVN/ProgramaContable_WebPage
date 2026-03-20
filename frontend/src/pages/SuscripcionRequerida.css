@@ -280,3 +280,50 @@
     font-size: 22px;
   }
 }
+
+/* Period selector */
+.sr-period-selector {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-top: -12px;
+  padding: 4px;
+  background: #E8E3D8;
+  border-radius: 8px;
+  width: fit-content;
+}
+
+.sr-period-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s;
+  background: transparent;
+  color: #6B6860;
+}
+
+.sr-period-btn--active {
+  background: #1A1A1A;
+  color: #fff;
+}
+
+.sr-period-savings {
+  margin-left: 6px;
+  font-size: 11px;
+  padding: 2px 6px;
+  background: #38A169;
+  color: #fff;
+  border-radius: 4px;
+}
+
+.sr-plan__savings {
+  font-size: 13px;
+  color: #38A169;
+  font-weight: 600;
+  margin-top: -6px;
+  margin-bottom: 2px;
+}

@@ -58,6 +58,14 @@ async def actualizar_plan(
             detail="Acceso denegado: se requiere rol admin o superior",
         )
 
+    # SEGURIDAD: Solo superadmin puede activar planes pagados directamente.
+    # Los admins normales solo pueden usar este endpoint para "CANCELAR" (plan = 'none').
+    if current_user.role != "superadmin" and datos.plan != "none":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para activar planes pagados directamente. Por favor usa la pasarela de pagos.",
+        )
+
     tenant = current_user.tenant
     if tenant is None:
         if current_user.role == "superadmin":
