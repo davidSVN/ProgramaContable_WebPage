@@ -188,6 +188,97 @@ function PlanModal({ currentPlan, onClose, onChanged }) {
   );
 }
 
+/* ── PaymentMethodSection ───────────────────────────────── */
+function PaymentMethodSection() {
+  const [status, setStatus]   = useState(null);
+  const [toggling, setToggling] = useState(false);
+  const [toast, setToast]     = useState(null);
+
+  useEffect(() => {
+    api.get('/wompi/subscription-status')
+      .then(data => setStatus(data))
+      .catch(() => {});
+  }, []);
+
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const toggleAutoRenew = async () => {
+    setToggling(true);
+    try {
+      const result = await api.post('/wompi/toggle-auto-renew', { auto_renew: !status.auto_renew });
+      setStatus(prev => ({ ...prev, auto_renew: result.auto_renew }));
+      showToast(result.auto_renew ? '✅ Renovación automática activada' : 'Renovación automática desactivada');
+    } catch (err) {
+      showToast('Error al cambiar configuración');
+    } finally {
+      setToggling(false);
+    }
+  };
+
+  if (!status || status.plan === 'none') return null;
+
+  return (
+    <section className="ab-suscrip-card" style={{ marginBottom: '16px' }}>
+      <div className="ab-suscrip-header">
+        <span className="ab-suscrip-icon" aria-hidden="true">💳</span>
+        <h2 className="ab-suscrip-title">Método de pago</h2>
+      </div>
+      <div className="ab-suscrip-body">
+        {toast && (
+          <div style={{
+            padding: '8px 12px', marginBottom: '12px', borderRadius: '6px',
+            background: '#F0FFF4', fontSize: '13px', color: '#38A169',
+          }}>
+            {toast}
+          </div>
+        )}
+
+        {status.has_payment_source ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+            <div style={{
+              background: '#F5F0E8', borderRadius: '8px', padding: '10px 16px',
+              fontFamily: 'monospace', fontSize: '14px',
+            }}>
+              {status.card_brand || 'Tarjeta'} **** {status.card_last_four || '----'}
+            </div>
+            <span style={{ fontSize: '13px', color: '#6B6B6B' }}>
+              {status.auto_renew ? 'Se renueva automáticamente' : 'Renovación manual'}
+            </span>
+          </div>
+        ) : (
+          <p style={{ fontSize: '13px', color: '#6B6B6B', marginBottom: '16px' }}>
+            No tienes un método de pago guardado. Tu plan se debe renovar manualmente.
+          </p>
+        )}
+
+        {status.has_payment_source && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontSize: '14px' }}>
+            <input
+              type="checkbox"
+              checked={status.auto_renew}
+              onChange={toggleAutoRenew}
+              disabled={toggling}
+              style={{ width: '18px', height: '18px', accentColor: '#FF6B2B' }}
+            />
+            Renovar mi plan automáticamente
+          </label>
+        )}
+
+        {status.plan_expires_at && (
+          <p style={{ fontSize: '12px', color: '#6B6B6B', marginTop: '12px' }}>
+            Tu plan <strong>{status.plan}</strong> vence el{' '}
+            {new Date(status.plan_expires_at).toLocaleDateString('es-CO')}.
+            {status.days_remaining > 0 && ` (${status.days_remaining} días restantes)`}
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
 /* ── SuscripcionSection ──────────────────────────────────── */
 function SuscripcionSection({ user }) {
   const [info, setInfo] = useState(null);
@@ -1144,6 +1235,7 @@ export default function Configuracion({ user }) {
       {canEdit && <PerfilNegocioSection />}
       {canEdit && <PrinterSection />}
 
+      {canEdit && <PaymentMethodSection />}
       <SuscripcionSection user={user} />
 
       {canEdit
