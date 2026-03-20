@@ -935,6 +935,25 @@ function UserDrawer({ user, closing, onClose, onEdit, onInactivate }) {
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+
+  const handleWhatsAppUser = () => {
+    if (!user.contacto) return;
+    const cleanPhone = user.contacto.replace(/\D/g, '');
+    const phone = cleanPhone.startsWith('57') ? cleanPhone : `57${cleanPhone}`;
+    let businessName = 'Lavalatu';
+    try {
+      const cached = localStorage.getItem('washflow_negocio_config');
+      if (cached) {
+        const config = JSON.parse(cached);
+        if (config.nombre_negocio) businessName = config.nombre_negocio;
+      }
+    } catch (e) {}
+    const message = `Hola ${user.nombre}, te saludamos de ${businessName}. ¿En qué podemos ayudarte hoy?`;
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+    setShowMoreMenu(false);
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -986,7 +1005,30 @@ function UserDrawer({ user, closing, onClose, onEdit, onInactivate }) {
               <button className="u-btn u-btn-outline u-btn-sm" onClick={onEdit}>
                 <PencilIcon /> Editar
               </button>
-              <button className="u-btn u-btn-ghost u-btn-sm">⋮ Más</button>
+              <div style={{ position: 'relative' }}>
+                <button className="u-btn u-btn-ghost u-btn-sm" onClick={() => setShowMoreMenu(!showMoreMenu)}>⋮ Más</button>
+                {showMoreMenu && (
+                  <div className="u-more-dropdown" style={{
+                    position: 'absolute', top: '100%', right: 0, marginTop: 4,
+                    background: '#fff', border: '1px solid #E8E3D8', borderRadius: 8,
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, minWidth: 140
+                  }}>
+                    <button className="u-dropdown-item" onClick={handleWhatsAppUser} style={{
+                      display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px',
+                      background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', textAlign: 'left'
+                    }}>
+                      <span style={{ color: '#25D366' }}>📱</span> WhatsApp
+                    </button>
+                    <button className="u-dropdown-item" onClick={() => { onInactivate(); setShowMoreMenu(false); }} style={{
+                      display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px',
+                      background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', textAlign: 'left',
+                      color: '#E53E3E'
+                    }}>
+                      <TrashIcon /> {user.estado === 'Activo' ? 'Inactivar' : 'Activar'}
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           <button className="u-close-btn" onClick={onClose} aria-label="Cerrar perfil" style={{ position: 'absolute', top: 12, right: 12 }}>

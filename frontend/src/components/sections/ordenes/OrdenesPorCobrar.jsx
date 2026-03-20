@@ -127,6 +127,31 @@ export default function OrdenesPorCobrar({ user, onNavigate }) {
   const [statsLoading, setStatsLoading] = useState(true);
   const [paidRows, setPaidRows]         = useState(new Set());
   const [toast, setToast]               = useState(null);
+  const [isSubmiting, setIsSubmiting] = useState(false);
+
+  const handleWhatsAppClick = (orden) => {
+    if (!orden.user_contact) {
+      showToast('El cliente no tiene un número de contacto registrado', 'error');
+      return;
+    }
+
+    const cleanPhone = orden.user_contact.replace(/\D/g, '');
+    const phone = cleanPhone.startsWith('57') ? cleanPhone : `57${cleanPhone}`;
+    
+    let businessName = 'Lavalatu';
+    try {
+      const cached = localStorage.getItem('washflow_negocio_config');
+      if (cached) {
+        const config = JSON.parse(cached);
+        if (config.nombre_negocio) businessName = config.nombre_negocio;
+      }
+    } catch (e) {}
+
+    const message = `Hola ${orden.user_name}, te saludamos de ${businessName}. \nQueremos recordarte que tienes un saldo pendiente de ${fmtCOP(orden.balance_due)} de tu orden #${orden.id}. \n¿Cuándo podrías pasar a cancelarlo? ¡Muchas gracias!`;
+
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+  };
 
   // ── Derived stats from loaded ordenes page ──────────────────────────────────
   const avgDays = ordenes.length > 0
@@ -430,14 +455,19 @@ export default function OrdenesPorCobrar({ user, onNavigate }) {
                       </td>
 
                       <td className="opc-td" onClick={e => e.stopPropagation()}>
-                        <BlockedAction>
-                        <button
-                          className={`opc-btn-cobrar${isExpanded ? ' opc-btn-cobrar--cancel' : ''}`}
-                          onClick={() => handleCobrarClick(orden.id)}
-                        >
-                          {isExpanded ? '✕ Cancelar' : 'Cobrar →'}
-                        </button>
-                        </BlockedAction>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <button className="wa-btn" onClick={() => handleWhatsAppClick(orden)}>
+                            📱 WhatsApp →
+                          </button>
+                          <BlockedAction>
+                            <button
+                              className={`opc-btn-cobrar${isExpanded ? ' opc-btn-cobrar--cancel' : ''}`}
+                              onClick={() => handleCobrarClick(orden.id)}
+                            >
+                              {isExpanded ? '✕ Cancelar' : 'Cobrar →'}
+                            </button>
+                          </BlockedAction>
+                        </div>
                       </td>
                     </tr>
 
