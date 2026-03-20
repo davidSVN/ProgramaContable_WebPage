@@ -16,6 +16,9 @@ class Tenant(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     max_usuarios = Column(Integer, default=5, nullable=False)
 
+    plan_expires_at = Column(DateTime, nullable=True)
+    last_payment_reference = Column(String(100), nullable=True)
+
     # Relación
     usuarios = relationship("AppUser", back_populates="tenant", lazy="selectin")
 
@@ -242,5 +245,43 @@ class AppSettings(Base):
     key = Column(String(100), nullable=False)
     value = Column(Text, nullable=False)
     tenant = relationship("Tenant")
-    
+
     __table_args__ = (UniqueConstraint("key", "tenant_id"),)
+
+
+class PaymentTransaction(Base):
+    """Registra cada intento de pago vía Wompi."""
+    __tablename__ = "payment_transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
+
+    # Referencia única que enviamos a Wompi (formato: WF-{tenant_id}-{timestamp})
+    reference = Column(String(100), unique=True, nullable=False, index=True)
+
+    # ID de transacción que devuelve Wompi
+    wompi_transaction_id = Column(String(100), nullable=True, unique=True, index=True)
+
+    # Plan y período que se está comprando
+    plan = Column(String(50), nullable=False)              # "basic" | "premium"
+    billing_period = Column(String(20), nullable=False)    # "monthly" | "yearly"
+
+    # Monto en centavos (como lo maneja Wompi)
+    amount_in_cents = Column(Integer, nullable=False)
+    currency = Column(String(10), default="COP", nullable=False)
+
+    # Estado del pago
+    status = Column(String(30), default="PENDING", nullable=False)
+
+    # Método de pago usado (CARD, NEQUI, PSE, BANCOLOMBIA_QR, etc.)
+    payment_method = Column(String(50), nullable=True)
+
+    # Fechas
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    # Fecha de expiración del plan
+    plan_expires_at = Column(DateTime, nullable=True)
+
+    # Relación
+    tenant = relationship("Tenant")

@@ -621,3 +621,44 @@ class BusinessSettingsResponse(BaseModel):
     business_address: str
     business_phone: str
     business_logo: Optional[str] = None
+
+
+# ─── Wompi / Pagos ────────────────────────────────────────────────────────────
+
+class CreatePaymentRequest(BaseModel):
+    """Request del frontend para iniciar un pago."""
+    plan: str       # "basic" | "premium"
+    period: str     # "monthly" | "yearly"
+
+
+class PaymentIntegrityResponse(BaseModel):
+    """Respuesta con los datos necesarios para abrir el checkout de Wompi."""
+    reference: str
+    amount_in_cents: int
+    currency: str
+    integrity_signature: str
+    public_key: str
+    redirect_url: str
+
+
+class PaymentTransactionResponse(BaseModel):
+    """Respuesta con el estado de una transacción."""
+    id: int
+    reference: str
+    wompi_transaction_id: Optional[str] = None
+    plan: str
+    billing_period: str
+    amount_in_cents: int
+    status: str
+    payment_method: Optional[str] = None
+    created_at: datetime
+    plan_expires_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class PaymentHistoryResponse(BaseModel):
+    """Lista de transacciones del tenant."""
+    transactions: list
+    current_plan: str
+    plan_expires_at: Optional[datetime] = None
