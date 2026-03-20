@@ -11,7 +11,8 @@ import {
 } from '../../services/nuevaOrden';
 import { api } from '../../services/api';
 import PrintInvoice from '../ui/PrintInvoice';
-import { printOrden } from '../../services/print';
+import { printOrden, buildPrintPayload } from '../../services/print';
+import { sendMessage } from '../../whatsapp';
 
 /* ── Constants ──────────────────────────────────────────────── */
 const PAYMENT_METHODS = ['Efectivo', 'Nequi', 'Daviplata', 'Transferencia', 'Llave', 'Saldo a Favor'];
@@ -44,6 +45,53 @@ function findServiceByShortcut(services, keywords) {
 
 function isAgencyService(name = '') {
   return /agencia/i.test(name);
+}
+
+/* ── WhatsApp Receipt Builder ───────────────────────────────── */
+function buildWhatsAppReceipt(payload) {
+  const { negocio, orden } = payload;
+  const biz = negocio?.nombre_negocio || negocio?.nombre || 'Lavandería';
+  const tel = negocio?.telefono ? `📞 ${negocio.telefono}` : '';
+  const dir = negocio?.direccion ? `📍 ${negocio.direccion}` : '';
+
+  const header = [
+    `🧺 *${biz}* 🧺`,
+    [tel, dir].filter(Boolean).join('  '),
+    '━━━━━━━━━━━━━━━━',
+  ].filter(Boolean).join('\n');
+
+  const info = [
+    `*Orden #${orden.numero}*`,
+    `📅 ${orden.fecha}`,
+    `👤 ${orden.cliente}`,
+    orden.telefono_cliente ? `📞 ${orden.telefono_cliente}` : '',
+  ].filter(Boolean).join('\n');
+
+  const maxNameLen = Math.max(...(orden.items || []).map(i => i.detalle.length), 20);
+  const itemLines = (orden.items || []).map(i => {
+    const cant = String(i.cantidad).padStart(2);
+    const name = i.detalle.padEnd(maxNameLen + 2, ' ');
+    const price = `$${Math.round(i.vlr_total).toLocaleString('es-CO')}`;
+    return `• ${cant}x ${name}${price}`;
+  });
+
+  const itemsBlock = ['', '*Servicios:*', ...itemLines, '━━━━━━━━━━━━━━━━'].join('\n');
+
+  const subtotalStr = `$${Math.round(orden.subtotal || 0).toLocaleString('es-CO')}`;
+  const abonoVal = orden.abono || 0;
+  const totalStr = `$${Math.round(orden.total || 0).toLocaleString('es-CO')}`;
+
+  const totalesLines = [`Total:    *${subtotalStr}*`];
+  if (abonoVal > 0) {
+    totalesLines.push(`Abono:   -$${Math.round(abonoVal).toLocaleString('es-CO')}`);
+    totalesLines.push(`Saldo:    *${totalStr}*`);
+  }
+
+  const estado = (orden.total || 0) <= 0.5
+    ? '✅ *PAGADA*'
+    : `⏳ *PENDIENTE: ${totalStr}*`;
+
+  return [header, info, itemsBlock, totalesLines.join('\n'), '', estado].join('\n');
 }
 
 /* ── Confetti ───────────────────────────────────────────────── */
@@ -759,7 +807,11 @@ function PaymentSection({
 }
 
 /* ── Totals Panel ───────────────────────────────────────────── */
-function TotalsPanel({ subtotal, discountAmt, total, totalAbono, saldoPendiente, paymentStatus, canSubmit, disabledReason, isCreating, onSubmit }) {
+function TotalsPanel({
+  subtotal, discountAmt, total, totalAbono, saldoPendiente, paymentStatus,
+  canSubmit, disabledReason, isCreating, onSubmit,
+  deliveryPrint, deliveryWhatsApp, onDeliveryPrint, onDeliveryWhatsApp, hasClientPhone,
+}) {
   return (
     <div className="no-totals-card">
       <div className="no-totals-inner">
@@ -791,6 +843,33 @@ function TotalsPanel({ subtotal, discountAmt, total, totalAbono, saldoPendiente,
             </div>
           </>
         )}
+      </div>
+
+      {/* Delivery options */}
+      <div className="no-delivery-options" role="group" aria-label="Enviar factura por">
+        <span className="no-delivery-label">Enviar por:</span>
+        <label className={`no-delivery-chip${deliveryPrint ? ' no-delivery-chip--active' : ''}`}>
+          <input
+            type="checkbox"
+            checked={deliveryPrint}
+            onChange={e => onDeliveryPrint(e.target.checked)}
+            aria-label="Enviar por impresión"
+          />
+          🖨️ Impresión
+        </label>
+        <label
+          className={`no-delivery-chip no-delivery-chip--wa${deliveryWhatsApp ? ' no-delivery-chip--active' : ''}${!hasClientPhone ? ' no-delivery-chip--disabled' : ''}`}
+          title={!hasClientPhone ? 'El cliente no tiene teléfono registrado' : ''}
+        >
+          <input
+            type="checkbox"
+            checked={deliveryWhatsApp}
+            disabled={!hasClientPhone}
+            onChange={e => onDeliveryWhatsApp(e.target.checked)}
+            aria-label="Enviar por WhatsApp"
+          />
+          📱 WhatsApp
+        </label>
       </div>
 
       {disabledReason && (
@@ -849,6 +928,10 @@ export default function NuevaOrden() {
   const [payments, setPayments]           = useState(initPayments);
 
   // ── Quick add (kept for reference; shortcuts wired via ServiceSearchInput) ──
+
+  // ── Delivery options ──────────────────────────────────────
+  const [deliveryPrint, setDeliveryPrint]       = useState(true);
+  const [deliveryWhatsApp, setDeliveryWhatsApp] = useState(false);
 
   // ── UI ────────────────────────────────────────────────────
   const [isCreating, setIsCreating]       = useState(false);
@@ -1178,7 +1261,7 @@ export default function NuevaOrden() {
         });
       }
 
-      // Success — print receipt (window.print dialog opens)
+      // Build common order data
       const orderNum = result?.order_id ?? result?.id ?? '—';
       const ordenParaImprimir = {
         ...result,
@@ -1189,7 +1272,21 @@ export default function NuevaOrden() {
         })),
         user_contact: selectedClient?.user_contact || '',
       };
-      await printOrden(ordenParaImprimir, negocioConfig, 2);
+
+      // Print if selected
+      if (deliveryPrint) {
+        await printOrden(ordenParaImprimir, negocioConfig, 2);
+      }
+
+      // WhatsApp if selected
+      if (deliveryWhatsApp && selectedClient?.user_contact) {
+        const payload = buildPrintPayload(ordenParaImprimir, negocioConfig, 1);
+        const waMessage = buildWhatsAppReceipt(payload);
+        sendMessage(selectedClient.user_contact, waMessage);
+      } else if (deliveryWhatsApp && !selectedClient?.user_contact) {
+        addToast('⚠️ El cliente no tiene teléfono registrado para WhatsApp', 'error', '');
+      }
+
       addToast(`✅ Orden #${orderNum} creada — ${selectedClient.user_name} — ${fmtCOP(total)}`, 'success', '');
 
       setSuccessFlash(true);
@@ -1385,6 +1482,11 @@ export default function NuevaOrden() {
           disabledReason={disabledReason}
           isCreating={isCreating}
           onSubmit={handleSubmit}
+          deliveryPrint={deliveryPrint}
+          deliveryWhatsApp={deliveryWhatsApp}
+          onDeliveryPrint={setDeliveryPrint}
+          onDeliveryWhatsApp={setDeliveryWhatsApp}
+          hasClientPhone={!!selectedClient?.user_contact}
         />
       </div>
 
