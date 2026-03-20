@@ -10,6 +10,7 @@ import {
   getRetencion, getForecastDemanda, getOportunidadesDescuento,
   recalcularML, getPeriodDates, getResumenDia,
 } from '../../services/reportes';
+import { useWhatsApp } from '../../whatsapp';
 import './IAReportes.css';
 
 // ── Formatters ─────────────────────────────────────────────────────────────────
@@ -159,12 +160,32 @@ function MiniMetric({ label, value, isCurrency, isPct, loading }) {
   );
 }
 
+// ── WhatsApp helper ────────────────────────────────────────────────────────────
+
+function getBusinessName() {
+  try {
+    const cached = localStorage.getItem('washflow_negocio_config');
+    if (cached) {
+      const cfg = JSON.parse(cached);
+      if (cfg.nombre_negocio) return cfg.nombre_negocio;
+    }
+  } catch (e) {}
+  return 'Lavalatu';
+}
+
 // ── RiesgoRow ──────────────────────────────────────────────────────────────────
 
-function RiesgoRow({ cliente, onToast }) {
+function RiesgoRow({ cliente, onToast, onSendWA }) {
   const dias = cliente.dias_sin_visitar ?? 0;
   const pillClass = dias >= 120 ? 'ia-heat-red' : dias >= 90 ? 'ia-heat-orange' : 'ia-heat-amber';
   const ltv = cliente.total_gastado ?? cliente.ltv ?? 0;
+  const contact = cliente.contacto ?? cliente.user_contact;
+
+  const handleWA = () => {
+    if (!contact) { onToast('El cliente no tiene un número de contacto registrado', 'error'); return; }
+    const nombre = cliente.nombre ?? cliente.user_name ?? 'cliente';
+    onSendWA(contact, 'rfm_riesgo', { nombre, negocio: getBusinessName(), dias });
+  };
 
   return (
     <tr className="ia-tr-hover">
@@ -174,11 +195,8 @@ function RiesgoRow({ cliente, onToast }) {
       <td className="ia-td-muted">{fmtDate(cliente.ultima_visita ?? cliente.last_visit)}</td>
       <td>
         <div className="ia-contact-cell">
-          <span className="ia-td-muted">{cliente.contacto ?? cliente.user_contact ?? '—'}</span>
-          <button
-            className="ia-wa-btn"
-            onClick={() => onToast('📱 Integración WhatsApp próximamente')}
-          >
+          <span className="ia-td-muted">{contact ?? '—'}</span>
+          <button className="ia-wa-btn" onClick={handleWA}>
             WhatsApp →
           </button>
         </div>
@@ -189,7 +207,7 @@ function RiesgoRow({ cliente, onToast }) {
 
 // ── PerfilRow ──────────────────────────────────────────────────────────────────
 
-function PerfilRow({ perfil, segConfig, expanded, onToggle }) {
+function PerfilRow({ perfil, segConfig, expanded, onToggle, onToast, onSendWA }) {
   const churn = perfil.riesgo_churn ?? 0;
   const churnColor = churn >= 65 ? '#C62828' : churn >= 35 ? '#F57F17' : '#4CAF50';
   const seg = segConfig[perfil.segmento] ?? { color: '#888780', desc: '' };
@@ -198,6 +216,21 @@ function PerfilRow({ perfil, segConfig, expanded, onToggle }) {
     : perfil.tendencia === 'decayendo'
       ? { icon: '▼', color: '#C62828', label: 'Decayendo' }
       : { icon: '→', color: '#888780', label: 'Estable' };
+
+  const handleWA = (e) => {
+    e.stopPropagation();
+    if (!perfil.contacto) { onToast('El cliente no tiene un número de contacto registrado', 'error'); return; }
+    const nombre = perfil.nombre ?? perfil.user_name ?? 'cliente';
+    const negocio = getBusinessName();
+    const seg = perfil.segmento || '';
+    const tplId =
+      seg === 'Campeones'  ? 'rfm_campeon' :
+      seg === 'Leales'     ? 'rfm_leal'    :
+      seg === 'Nuevos'     ? 'rfm_nuevo'   :
+      seg === 'En Riesgo'  ? 'rfm_riesgo'  :
+      seg === 'Perdidos'   ? 'rfm_perdido' : 'saludo';
+    onSendWA(perfil.contacto, tplId, { nombre, negocio, dias: perfil.dias_sin_visitar ?? 0, descuento: '10' });
+  };
 
   return (
     <>
@@ -226,10 +259,15 @@ function PerfilRow({ perfil, segConfig, expanded, onToggle }) {
           <div style={{ fontSize: '0.7rem', color: churnColor, fontWeight: 600 }}>{churn}%</div>
         </td>
         <td className="ia-td-bold ia-td-green">{fmtCOP(perfil.ltv_estimado ?? 0)}</td>
+        <td>
+          <button className="ia-wa-btn" onClick={handleWA}>
+            WhatsApp →
+          </button>
+        </td>
       </tr>
       {expanded && (
         <tr className="ia-expand-row">
-          <td colSpan={7}>
+          <td colSpan={8}>
             <div className="ia-expand-content">
               <div><strong>Última visita:</strong> {fmtDate(perfil.ultima_visita)}</div>
               <div><strong>Órdenes totales:</strong> {perfil.total_ordenes ?? '—'}</div>
@@ -245,13 +283,23 @@ function PerfilRow({ perfil, segConfig, expanded, onToggle }) {
 
 // ── OportunidadCard ────────────────────────────────────────────────────────────
 
-function OportunidadCard({ op, isGestionado, onGestionar, onToast, delay }) {
+function OportunidadCard({ op, isGestionado, onGestionar, onToast, onSendWA, delay }) {
   const riesgoClass =
     op.nivel_riesgo === 'alto'  ? 'ia-riesgo-alto'  :
     op.nivel_riesgo === 'medio' ? 'ia-riesgo-medio' : 'ia-riesgo-bajo';
   const riesgoLabel =
     op.nivel_riesgo === 'alto'  ? 'RIESGO ALTO'  :
     op.nivel_riesgo === 'medio' ? 'RIESGO MEDIO' : 'RIESGO BAJO';
+
+  const handleWA = () => {
+    if (!op.contacto) { onToast('El cliente no tiene un número de contacto registrado', 'error'); return; }
+    const nombre = op.nombre ?? op.user_name ?? 'cliente';
+    onSendWA(op.contacto, 'rfm_perdido', {
+      nombre,
+      negocio: getBusinessName(),
+      descuento: op.descuento_sugerido ?? 10,
+    });
+  };
 
   return (
     <div
@@ -274,10 +322,7 @@ function OportunidadCard({ op, isGestionado, onGestionar, onToast, delay }) {
       </div>
       {op.razon && <div className="ia-oport-razon">"{op.razon}"</div>}
       <div className="ia-oport-actions">
-        <button
-          className="ia-wa-btn"
-          onClick={() => onToast('📱 Integración WhatsApp próximamente — Copia el mensaje manualmente')}
-        >
+        <button className="ia-wa-btn" onClick={handleWA}>
           📱 WhatsApp →
         </button>
         <button
@@ -670,6 +715,7 @@ function ResumenDia({ data, loading, fechaDia, onVolver, onDiaAnterior, onDiaSig
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export default function IAReportes() {
+  const { send: sendWA } = useWhatsApp();
   const plan      = localStorage.getItem('washflow_plan') ?? 'basic';
   const isPremium = plan === 'premium';
 
@@ -1080,7 +1126,7 @@ export default function IAReportes() {
                 </thead>
                 <tbody>
                   {clientesRiesgo.slice(0, 10).map((c, i) => (
-                    <RiesgoRow key={c.user_id ?? i} cliente={c} onToast={addToast} />
+                    <RiesgoRow key={c.user_id ?? i} cliente={c} onToast={addToast} onSendWA={sendWA} />
                   ))}
                 </tbody>
               </table>
@@ -1161,6 +1207,7 @@ export default function IAReportes() {
                       <th>Tendencia</th>
                       <th>Riesgo Churn</th>
                       <th>LTV Est.</th>
+                      <th>Contacto</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1173,6 +1220,8 @@ export default function IAReportes() {
                           segConfig={SEGMENTOS}
                           expanded={expandedPerfil === id}
                           onToggle={() => setExpandedPerfil(expandedPerfil === id ? null : id)}
+                          onToast={addToast}
+                          onSendWA={sendWA}
                         />
                       );
                     })}
@@ -1304,6 +1353,7 @@ export default function IAReportes() {
                   isGestionado={gestionados.has(op.user_id ?? i)}
                   onGestionar={() => setGestionados(p => new Set([...p, op.user_id ?? i]))}
                   onToast={addToast}
+                  onSendWA={sendWA}
                   delay={i * 80}
                 />
               ))}

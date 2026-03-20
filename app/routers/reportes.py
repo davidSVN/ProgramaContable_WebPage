@@ -271,7 +271,15 @@ async def reporte_ml_perfiles(
         return []
     engine = ml_engine.get_engine(current_user.tenant_id)
     perfiles = engine.calcular_perfiles(orders_df)
-    
+
+    # Fetch contacts for all user_ids
+    user_ids = [p.user_id for p in perfiles]
+    contacts_result = await db.execute(
+        select(LaundryUser.user_id, LaundryUser.user_contact)
+        .where(LaundryUser.user_id.in_(user_ids))
+    )
+    contacts_map = {r.user_id: r.user_contact for r in contacts_result.all()}
+
     # Map to frontend keys
     SEG_MAP = {
         "campeon": "Campeones",
@@ -284,6 +292,7 @@ async def reporte_ml_perfiles(
     return [{
         "user_id": p.user_id,
         "nombre": p.user_name,
+        "contacto": contacts_map.get(p.user_id),
         "segmento": SEG_MAP.get(p.segmento_rfm, "Nuevos"),
         "frecuencia": round(p.frecuencia_promedio_dias, 1),
         "ticket_promedio": p.ticket_promedio,
@@ -366,7 +375,15 @@ async def reporte_ml_descuentos(
         return []
     engine = ml_engine.get_engine(current_user.tenant_id)
     perfiles = engine.calcular_perfiles(orders_df)
-    
+
+    # Fetch contacts for all user_ids
+    user_ids = [p.user_id for p in perfiles]
+    contacts_result = await db.execute(
+        select(LaundryUser.user_id, LaundryUser.user_contact)
+        .where(LaundryUser.user_id.in_(user_ids))
+    )
+    contacts_map = {r.user_id: r.user_contact for r in contacts_result.all()}
+
     # Map to frontend keys (Reusable mapping)
     SEG_MAP = {
         "campeon": "Campeones",
@@ -379,6 +396,7 @@ async def reporte_ml_descuentos(
     perfiles_mapped = [{
         "user_id": p.user_id,
         "nombre": p.user_name,
+        "contacto": contacts_map.get(p.user_id),
         "segmento": SEG_MAP.get(p.segmento_rfm, "Nuevos"),
         "frecuencia": round(p.frecuencia_promedio_dias, 1),
         "ticket_promedio": p.ticket_promedio,
@@ -386,7 +404,7 @@ async def reporte_ml_descuentos(
         "riesgo_churn": int((p.riesgo_churn or 0) * 100),
         "nivel_riesgo": p.churn_categoria,
         "ltv_estimado": p.lifetime_value_estimado,
-        "ltv": p.lifetime_value_estimado, # Both names used
+        "ltv": p.lifetime_value_estimado,
         "ultima_visita": p.ultimo_pedido,
         "dias_sin_visitar": p.dias_sin_orden,
         "total_ordenes": p.total_ordenes,

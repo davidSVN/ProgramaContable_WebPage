@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import './Usuarios.css';
 import { getUsuarios, createUsuario, updateUsuario, getUsuarioOrdenes } from '../../services/usuarios';
 import { BlockedAction } from '../ui/BlockedAction';
+import { useWhatsApp } from '../../whatsapp';
 
 /* ── Helpers ───────────────────────────────────────────── */
 const now = Date.now();
@@ -95,6 +96,7 @@ export default function UsuariosWrapper(props) {
 }
 
 function Usuarios() {
+  const { send: sendWA } = useWhatsApp();
   const [users, setUsers] = useState(INITIAL_USERS);
   const [totalItems, setTotalItems] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -576,6 +578,7 @@ function Usuarios() {
           closing={drawerClosing}
           onClose={closeDrawer}
           onEdit={() => { closeDrawer(); setEditUser(drawerUser); }}
+          onSendWA={sendWA}
           onInactivate={() => {
             const u = users.find(u => u.id === drawerUser.id) || drawerUser;
             setUsers(prev => prev.map(item => item.id === u.id ? { ...item, estado: 'Inactivo' } : item));
@@ -930,11 +933,25 @@ function mapEstado(order_status) {
   }
 }
 
-function UserDrawer({ user, closing, onClose, onEdit, onInactivate }) {
+function UserDrawer({ user, closing, onClose, onEdit, onInactivate, onSendWA }) {
   const [progressReady, setProgressReady] = useState(false);
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+
+  const handleWhatsAppUser = () => {
+    if (!user.contacto) return;
+    let negocio = 'Lavalatu';
+    try {
+      const cfg = JSON.parse(localStorage.getItem('washflow_negocio_config') || '{}');
+      if (cfg.nombre_negocio) negocio = cfg.nombre_negocio;
+    } catch (e) {}
+    if (onSendWA) {
+      onSendWA(user.contacto, 'saludo', { nombre: user.nombre, negocio });
+    }
+    setShowMoreMenu(false);
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -986,7 +1003,30 @@ function UserDrawer({ user, closing, onClose, onEdit, onInactivate }) {
               <button className="u-btn u-btn-outline u-btn-sm" onClick={onEdit}>
                 <PencilIcon /> Editar
               </button>
-              <button className="u-btn u-btn-ghost u-btn-sm">⋮ Más</button>
+              <div style={{ position: 'relative' }}>
+                <button className="u-btn u-btn-ghost u-btn-sm" onClick={() => setShowMoreMenu(!showMoreMenu)}>⋮ Más</button>
+                {showMoreMenu && (
+                  <div className="u-more-dropdown" style={{
+                    position: 'absolute', top: '100%', right: 0, marginTop: 4,
+                    background: '#fff', border: '1px solid #E8E3D8', borderRadius: 8,
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, minWidth: 140
+                  }}>
+                    <button className="u-dropdown-item" onClick={handleWhatsAppUser} style={{
+                      display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px',
+                      background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', textAlign: 'left'
+                    }}>
+                      <span style={{ color: '#25D366' }}>📱</span> WhatsApp
+                    </button>
+                    <button className="u-dropdown-item" onClick={() => { onInactivate(); setShowMoreMenu(false); }} style={{
+                      display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px',
+                      background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', textAlign: 'left',
+                      color: '#E53E3E'
+                    }}>
+                      <TrashIcon /> {user.estado === 'Activo' ? 'Inactivar' : 'Activar'}
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           <button className="u-close-btn" onClick={onClose} aria-label="Cerrar perfil" style={{ position: 'absolute', top: 12, right: 12 }}>

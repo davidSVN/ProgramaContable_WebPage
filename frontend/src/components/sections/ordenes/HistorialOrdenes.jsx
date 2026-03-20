@@ -410,6 +410,30 @@ export default function HistorialOrdenes({ user, onNavigate }) {
     setTimeout(() => { setDrawerOrder(null); setDrawerClosing(false); }, 240);
   };
 
+  const handleWhatsAppOrder = (order) => {
+    if (!order.user_contact) {
+      showToast('El cliente no tiene un número de contacto registrado', 'error');
+      return;
+    }
+
+    const cleanPhone = order.user_contact.replace(/\D/g, '');
+    const phone = cleanPhone.startsWith('57') ? cleanPhone : `57${cleanPhone}`;
+    
+    let businessName = 'Lavalatu';
+    try {
+      const cached = localStorage.getItem('washflow_negocio_config');
+      if (cached) {
+        const config = JSON.parse(cached);
+        if (config.nombre_negocio) businessName = config.nombre_negocio;
+      }
+    } catch (e) {}
+
+    const message = `Hola ${order.user_name}, te saludamos de ${businessName}. Te contactamos por la orden #${order.id} (${order.order_status}).`;
+
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+  };
+
   // ── Delete ──────────────────────────────────────────────────────────────────
   const handleDelete = async (id) => {
     try {
@@ -1084,14 +1108,14 @@ export default function HistorialOrdenes({ user, onNavigate }) {
             )}
 
             <div className="ho-drawer-footer">
-              {/* Comentado temporalmente
-              <button className="ho-btn ho-btn--outline" onClick={() => handleReprint(drawerOrder)}>
-                🖨️ Imprimir orden
-              </button>
-              */}
               <button className="ho-btn ho-btn--primary" onClick={() => openEdit(drawerOrder)}>
                 ✏️ Editar orden
               </button>
+              {drawerOrder.order_status !== 'Entregada' && (
+                <button className="wa-btn" onClick={() => handleWhatsAppOrder(drawerOrder)} style={{ width: '100%', justifyContent: 'center', height: '40px' }}>
+                  📱 WhatsApp →
+                </button>
+              )}
               {drawerOrder.order_status !== 'Entregada' && drawerOrder.order_status !== 'Cancelada' && (
                 <button
                   className="ho-btn ho-btn--danger-ghost"

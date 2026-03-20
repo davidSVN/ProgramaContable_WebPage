@@ -586,6 +586,34 @@
   border-color: var(--ds-text-secondary);
 }
 
+/* ── WhatsApp button ────────────────────────────────────────── */
+.wa-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1.5px solid #25D366;
+  border-radius: 8px;
+  background: transparent;
+  color: #25D366;
+  font-family: var(--ds-font-body, 'DM Sans', sans-serif);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 150ms;
+}
+
+.wa-btn:hover {
+  background: #25D366;
+  color: #fff;
+}
+
+.wa-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
 .ho-pag-btn--active { background: var(--ds-accent); border-color: var(--ds-accent); color: #fff; }
 .ho-pag-btn[disabled] { opacity: 0.35; cursor: not-allowed; }
 

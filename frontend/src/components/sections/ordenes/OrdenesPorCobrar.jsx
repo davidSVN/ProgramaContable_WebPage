@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
 import { getOrdenesDebe, getOrdenesDebeStats, marcarPagado } from '../../../services/ordenesCobrar';
 import './OrdenesPorCobrar.css';
 import { BlockedAction } from '../../ui/BlockedAction';
+import { useWhatsApp } from '../../../whatsapp';
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 const fmtCOP = (n) =>
@@ -113,6 +114,7 @@ function DaysPill({ days }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function OrdenesPorCobrar({ user, onNavigate }) {
+  const { send } = useWhatsApp();
   const [stats, setStats]               = useState(null);
   const [ordenes, setOrdenes]           = useState([]);
   const [total, setTotal]               = useState(0);
@@ -127,6 +129,26 @@ export default function OrdenesPorCobrar({ user, onNavigate }) {
   const [statsLoading, setStatsLoading] = useState(true);
   const [paidRows, setPaidRows]         = useState(new Set());
   const [toast, setToast]               = useState(null);
+  const [isSubmiting, setIsSubmiting] = useState(false);
+
+  const handleWhatsAppClick = (orden) => {
+    if (!orden.user_contact) {
+      showToast('El cliente no tiene un número de contacto registrado', 'error');
+      return;
+    }
+    let negocio = 'Lavalatu';
+    try {
+      const cfg = JSON.parse(localStorage.getItem('washflow_negocio_config') || '{}');
+      if (cfg.nombre_negocio) negocio = cfg.nombre_negocio;
+    } catch (e) {}
+    send(orden.user_contact, 'deuda', {
+      nombre: orden.user_name,
+      negocio,
+      orden_id: orden.id,
+      saldo: new Intl.NumberFormat('es-CO').format(orden.balance_due),
+      descripcion: orden.items_description || '',
+    });
+  };
 
   // ── Derived stats from loaded ordenes page ──────────────────────────────────
   const avgDays = ordenes.length > 0
@@ -430,14 +452,19 @@ export default function OrdenesPorCobrar({ user, onNavigate }) {
                       </td>
 
                       <td className="opc-td" onClick={e => e.stopPropagation()}>
-                        <BlockedAction>
-                        <button
-                          className={`opc-btn-cobrar${isExpanded ? ' opc-btn-cobrar--cancel' : ''}`}
-                          onClick={() => handleCobrarClick(orden.id)}
-                        >
-                          {isExpanded ? '✕ Cancelar' : 'Cobrar →'}
-                        </button>
-                        </BlockedAction>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <button className="wa-btn" onClick={() => handleWhatsAppClick(orden)}>
+                            📱 WhatsApp →
+                          </button>
+                          <BlockedAction>
+                            <button
+                              className={`opc-btn-cobrar${isExpanded ? ' opc-btn-cobrar--cancel' : ''}`}
+                              onClick={() => handleCobrarClick(orden.id)}
+                            >
+                              {isExpanded ? '✕ Cancelar' : 'Cobrar →'}
+                            </button>
+                          </BlockedAction>
+                        </div>
                       </td>
                     </tr>
 

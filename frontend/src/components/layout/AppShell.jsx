@@ -19,6 +19,7 @@ import Servicios from '../sections/Servicios';
 import Proveedores from '../sections/Proveedores';
 import UsuariosApp from '../sections/UsuariosApp';
 import Configuracion from '../sections/Configuracion';
+import { WhatsAppCenter } from '../../whatsapp';
 
 const SECTIONS = {
   'ia-reportes': IAReportes,
@@ -35,6 +36,7 @@ const SECTIONS = {
   'proveedores': Proveedores,
   'usuarios-app': UsuariosApp,
   'configuracion': Configuracion,
+  'whatsapp-center': WhatsAppCenter,
 };
 
 export default function AppShell({ user }) {

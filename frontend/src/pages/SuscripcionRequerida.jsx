@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { clearToken } from '../services/auth';
-import { updatePlan } from '../services/suscripcion';
+import { useState, useEffect } from 'react';
+import { clearToken, getMe } from '../services/auth';
+import { PLAN_PRICES, createPayment, redirectToWompiCheckout } from '../services/wompi';
 import './SuscripcionRequerida.css';
 
 const BASIC_FEATURES = [
@@ -23,17 +23,27 @@ const PREMIUM_FEATURES = [
 export default function SuscripcionRequerida({ onPlanActivated }) {
   const [loading, setLoading] = useState(null); // 'basic' | 'premium' | null
   const [error, setError] = useState(null);
+  const [user, setUser] = useState(null);
+  const [selectedPeriod, setSelectedPeriod] = useState('monthly');
+
+  useEffect(() => {
+    getMe()
+      .then(u => setUser(u))
+      .catch(() => {});
+  }, []);
 
   const handleActivar = async (plan) => {
     setLoading(plan);
     setError(null);
     try {
-      await updatePlan(plan);
-      localStorage.setItem('washflow_plan', plan);
-      onPlanActivated?.(plan);
+      const paymentData = await createPayment(plan, selectedPeriod);
+      
+      const userEmail = user?.email || localStorage.getItem('washflow_email') || '';
+      const userName = user?.username || localStorage.getItem('washflow_username') || '';
+
+      redirectToWompiCheckout(paymentData, userEmail, userName);
     } catch (err) {
-      setError(err.message || 'Error al activar el plan');
-    } finally {
+      setError(err.message || 'Error al iniciar el proceso de pago');
       setLoading(null);
     }
   };
@@ -41,6 +51,10 @@ export default function SuscripcionRequerida({ onPlanActivated }) {
   const handleLogout = () => {
     clearToken();
     window.location.href = '/login';
+  };
+
+  const getPriceData = (plan) => {
+    return PLAN_PRICES[plan][selectedPeriod];
   };
 
   return (
@@ -68,6 +82,23 @@ export default function SuscripcionRequerida({ onPlanActivated }) {
           </p>
         </div>
 
+        {/* Period Selector */}
+        <div className="sr-period-selector">
+          <button
+            className={`sr-period-btn ${selectedPeriod === 'monthly' ? 'sr-period-btn--active' : ''}`}
+            onClick={() => setSelectedPeriod('monthly')}
+          >
+            Mensual
+          </button>
+          <button
+            className={`sr-period-btn ${selectedPeriod === 'yearly' ? 'sr-period-btn--active' : ''}`}
+            onClick={() => setSelectedPeriod('yearly')}
+          >
+            Anual
+            <span className="sr-period-savings">-17%</span>
+          </button>
+        </div>
+
         {error && (
           <div className="sr-error">⚠️ {error}</div>
         )}
@@ -78,7 +109,10 @@ export default function SuscripcionRequerida({ onPlanActivated }) {
           <div className="sr-plan sr-plan--basic">
             <div className="sr-plan__header">
               <h2 className="sr-plan__name">Basic</h2>
-              <p className="sr-plan__price">Próximamente</p>
+              <p className="sr-plan__price">{getPriceData('basic').label}</p>
+              {selectedPeriod === 'yearly' && (
+                <p className="sr-plan__savings">{PLAN_PRICES.basic.yearly.savings}</p>
+              )}
             </div>
             <ul className="sr-plan__features">
               {BASIC_FEATURES.map(f => (
@@ -94,7 +128,7 @@ export default function SuscripcionRequerida({ onPlanActivated }) {
               disabled={loading !== null}
             >
               {loading === 'basic'
-                ? <><span className="sr-spinner" /> Activando...</>
+                ? <><span className="sr-spinner" /> Redirigiendo...</>
                 : 'Activar Basic →'}
             </button>
           </div>
@@ -104,7 +138,10 @@ export default function SuscripcionRequerida({ onPlanActivated }) {
             <div className="sr-plan__badge">⭐ Popular</div>
             <div className="sr-plan__header">
               <h2 className="sr-plan__name sr-plan__name--premium">Premium</h2>
-              <p className="sr-plan__price">Próximamente</p>
+              <p className="sr-plan__price">{getPriceData('premium').label}</p>
+              {selectedPeriod === 'yearly' && (
+                <p className="sr-plan__savings">{PLAN_PRICES.premium.yearly.savings}</p>
+              )}
             </div>
             <ul className="sr-plan__features">
               {PREMIUM_FEATURES.map(f => (
@@ -120,7 +157,7 @@ export default function SuscripcionRequerida({ onPlanActivated }) {
               disabled={loading !== null}
             >
               {loading === 'premium'
-                ? <><span className="sr-spinner sr-spinner--light" /> Activando...</>
+                ? <><span className="sr-spinner sr-spinner--light" /> Redirigiendo...</>
                 : 'Activar Premium →'}
             </button>
           </div>

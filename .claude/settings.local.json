@@ -3,7 +3,12 @@
     "allow": [
       "Bash(cd:*)",
       "Bash(pyinstaller --onefile --noconsole --name \"WashFlow_PrintBridge\" printbridge.py)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(curl:*)",
+      "Bash(ls:*)",
+      "Bash(grep -r \"VITE_API_URL\\\\|API_URL\\\\|localhost:8000\" /c/Users/david.vasquez/Documents/personal/lavanderia/lavalatu-api/frontend/src --include=*.js --include=*.jsx -l)",
+      "Bash(python -m uvicorn app.main:app --reload --port 8000)",
+      "Bash(npm run:*)"
     ]
   }
 }

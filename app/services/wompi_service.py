@@ -26,11 +26,11 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 PLAN_PRICES = {
     "basic": {
-        "monthly": 990000,     # $49.900 COP
+        "monthly": 90000,     # $49.900 COP
         "yearly": 47900000,     # $479.000 COP (ahorra 2 meses)
     },
     "premium": {
-        "monthly": 890000,     # $89.900 COP 8990000 -> se le agregan dos ceros siempre
+        "monthly": 90000,     # $89.900 COP 8990000 -> se le agregan dos ceros siempre
         "yearly": 86200000,     # $862.000 COP (ahorra 2 meses)
     },
 }
