@@ -11,6 +11,54 @@ from app.schemas import NegocioConfig, NegocioConfigResponse
 
 router = APIRouter()
 
+_WA_KEY = "whatsapp_templates"
+
+
+@router.get("/whatsapp-templates")
+async def get_whatsapp_templates(
+    current_user: AppUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(AppSettings).where(
+            AppSettings.tenant_id == current_user.tenant_id,
+            AppSettings.key == _WA_KEY,
+        )
+    )
+    setting = result.scalars().first()
+    if not setting:
+        return {"templates": {}}
+    try:
+        return {"templates": json.loads(setting.value)}
+    except json.JSONDecodeError:
+        return {"templates": {}}
+
+
+@router.put("/whatsapp-templates")
+async def save_whatsapp_templates(
+    body: dict,
+    current_user: AppUser = Depends(require_admin_or_above),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(AppSettings).where(
+            AppSettings.tenant_id == current_user.tenant_id,
+            AppSettings.key == _WA_KEY,
+        )
+    )
+    setting = result.scalars().first()
+    value = json.dumps(body.get("templates", {}))
+    if setting:
+        setting.value = value
+    else:
+        db.add(AppSettings(
+            tenant_id=current_user.tenant_id,
+            key=_WA_KEY,
+            value=value,
+        ))
+    await db.commit()
+    return {"status": "ok"}
+
 _KEY = "negocio_config"
 _MAX_LOGO_BYTES = 512_000  # 500 KB
 

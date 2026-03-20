@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
 import { getOrdenesDebe, getOrdenesDebeStats, marcarPagado } from '../../../services/ordenesCobrar';
 import './OrdenesPorCobrar.css';
 import { BlockedAction } from '../../ui/BlockedAction';
+import { useWhatsApp } from '../../../whatsapp';
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 const fmtCOP = (n) =>
@@ -113,6 +114,7 @@ function DaysPill({ days }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function OrdenesPorCobrar({ user, onNavigate }) {
+  const { send } = useWhatsApp();
   const [stats, setStats]               = useState(null);
   const [ordenes, setOrdenes]           = useState([]);
   const [total, setTotal]               = useState(0);
@@ -134,23 +136,18 @@ export default function OrdenesPorCobrar({ user, onNavigate }) {
       showToast('El cliente no tiene un número de contacto registrado', 'error');
       return;
     }
-
-    const cleanPhone = orden.user_contact.replace(/\D/g, '');
-    const phone = cleanPhone.startsWith('57') ? cleanPhone : `57${cleanPhone}`;
-    
-    let businessName = 'Lavalatu';
+    let negocio = 'Lavalatu';
     try {
-      const cached = localStorage.getItem('washflow_negocio_config');
-      if (cached) {
-        const config = JSON.parse(cached);
-        if (config.nombre_negocio) businessName = config.nombre_negocio;
-      }
+      const cfg = JSON.parse(localStorage.getItem('washflow_negocio_config') || '{}');
+      if (cfg.nombre_negocio) negocio = cfg.nombre_negocio;
     } catch (e) {}
-
-    const message = `Hola ${orden.user_name}, te saludamos de ${businessName}. \nQueremos recordarte que tienes un saldo pendiente de ${fmtCOP(orden.balance_due)} de tu orden #${orden.id}. \n¿Cuándo podrías pasar a cancelarlo? ¡Muchas gracias!`;
-
-    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-    window.open(url, '_blank');
+    send(orden.user_contact, 'deuda', {
+      nombre: orden.user_name,
+      negocio,
+      orden_id: orden.id,
+      saldo: new Intl.NumberFormat('es-CO').format(orden.balance_due),
+      descripcion: orden.items_description || '',
+    });
   };
 
   // ── Derived stats from loaded ordenes page ──────────────────────────────────

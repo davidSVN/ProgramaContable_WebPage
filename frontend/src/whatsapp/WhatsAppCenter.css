@@ -1,0 +1,453 @@
+/* WhatsApp Center — WashFlow design system */
+
+.wac-root {
+  padding: 24px;
+  max-width: 1200px;
+  background: #F5F0E8;
+  min-height: 100%;
+  position: relative;
+}
+
+/* ── Header ──────────────────────────────────────────── */
+.wac-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.wac-title {
+  font-family: 'Syne', sans-serif;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #1A1A1A;
+  margin: 0 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.wac-title__icon {
+  font-size: 1.4rem;
+}
+
+.wac-subtitle {
+  font-size: 0.875rem;
+  color: #6B6860;
+  margin: 0;
+}
+
+.wac-loading {
+  padding: 40px;
+  text-align: center;
+  color: #6B6860;
+  font-size: 0.9rem;
+}
+
+/* ── Tabs ─────────────────────────────────────────────── */
+.wac-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 2px solid #E8E3D8;
+  padding-bottom: 0;
+}
+
+.wac-tab {
+  padding: 8px 16px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #888780;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.wac-tab:hover {
+  color: #1A1A1A;
+}
+
+.wac-tab.active {
+  color: #FF6B2B;
+  border-bottom-color: #FF6B2B;
+  font-weight: 600;
+}
+
+/* ── Content Layout ───────────────────────────────────── */
+.wac-content {
+  display: grid;
+  grid-template-columns: 40% 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .wac-content {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Left panel ───────────────────────────────────────── */
+.wac-left {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wac-left__title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #888780;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+
+.wac-empty {
+  padding: 24px;
+  text-align: center;
+  color: #888780;
+  font-size: 0.875rem;
+}
+
+/* Template card */
+.wac-tpl-card {
+  background: #fff;
+  border: 1px solid #E8E3D8;
+  border-left: 3px solid transparent;
+  border-radius: 10px;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.wac-tpl-card:hover {
+  border-color: #E8E3D8;
+  border-left-color: #FF6B2B;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.wac-tpl-card.selected {
+  border-left-color: #FF6B2B;
+  box-shadow: 0 2px 10px rgba(255,107,43,0.12);
+}
+
+.wac-tpl-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.wac-tpl-card__label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #1A1A1A;
+}
+
+.wac-tpl-edit-btn {
+  background: none;
+  border: 1px solid #E8E3D8;
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 0.75rem;
+  color: #FF6B2B;
+  cursor: pointer;
+  transition: background 0.1s;
+  white-space: nowrap;
+}
+
+.wac-tpl-edit-btn:hover {
+  background: #FFF0E8;
+}
+
+.wac-tpl-custom-badge {
+  display: inline-block;
+  background: #FFF0E8;
+  color: #CC4A12;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 20px;
+  margin-bottom: 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.wac-tpl-card__preview {
+  font-size: 0.78rem;
+  color: #888780;
+  margin: 0;
+  line-height: 1.4;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* Inline editor */
+.wac-editor {
+  margin-top: 12px;
+  border-top: 1px solid #E8E3D8;
+  padding-top: 12px;
+}
+
+.wac-editor__vars-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #6B6860;
+  margin-bottom: 8px;
+}
+
+.wac-editor__pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.wac-var-pill {
+  background: #FFF0E8;
+  color: #CC4A12;
+  border: none;
+  border-radius: 20px;
+  padding: 3px 10px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.wac-var-pill:hover {
+  background: #FFE0CC;
+}
+
+.wac-editor__textarea {
+  width: 100%;
+  border: 1px solid #E8E3D8;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: #1A1A1A;
+  background: #FAFAF8;
+  resize: vertical;
+  font-family: 'DM Sans', sans-serif;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.wac-editor__textarea:focus {
+  outline: none;
+  border-color: #FF6B2B;
+}
+
+.wac-editor__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* Buttons */
+.wac-btn {
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.wac-btn--primary {
+  background: #FF6B2B;
+  color: #fff;
+}
+
+.wac-btn--primary:hover:not(:disabled) {
+  background: #E55A1F;
+}
+
+.wac-btn--primary:disabled {
+  opacity: 0.6;
+}
+
+.wac-btn--ghost {
+  background: #F5F0E8;
+  color: #6B6860;
+  border: 1px solid #E8E3D8;
+}
+
+.wac-btn--ghost:hover {
+  background: #EBE5DA;
+}
+
+/* ── Right panel ──────────────────────────────────────── */
+.wac-right {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.wac-section-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #888780;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 10px;
+}
+
+/* WhatsApp preview */
+.wac-preview-section,
+.wac-test-section {
+  background: #fff;
+  border: 1px solid #E8E3D8;
+  border-radius: 12px;
+  padding: 18px 20px;
+}
+
+.wac-wa-container {
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid #D1C9BD;
+}
+
+.wac-wa-header {
+  background: #075E54;
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wac-wa-dot {
+  width: 28px;
+  height: 28px;
+  background: #25D366;
+  border-radius: 50%;
+}
+
+.wac-wa-body {
+  background: #E5DDD5;
+  padding: 20px;
+  min-height: 100px;
+}
+
+.wac-wa-bubble {
+  background: #DCF8C6;
+  border-radius: 12px 12px 12px 0;
+  padding: 10px 14px;
+  max-width: 280px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #1A1A1A;
+  word-break: break-word;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.wac-wa-bubble strong {
+  font-weight: 700;
+}
+
+.wac-wa-empty {
+  color: #888780;
+  font-size: 0.82rem;
+  text-align: center;
+  padding: 10px;
+}
+
+/* Test section */
+.wac-field {
+  margin-bottom: 12px;
+}
+
+.wac-field-label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #4A4845;
+  margin-bottom: 5px;
+}
+
+.wac-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #E8E3D8;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: #1A1A1A;
+  background: #FAFAF8;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.wac-input:focus {
+  outline: none;
+  border-color: #FF6B2B;
+}
+
+.wac-field-hint {
+  display: block;
+  font-size: 0.72rem;
+  color: #9B9790;
+  margin-top: 3px;
+}
+
+.wac-send-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px;
+  background: #25D366;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 6px;
+  transition: background 0.15s;
+}
+
+.wac-send-btn:hover {
+  background: #1EBD5A;
+}
+
+/* ── Toast ────────────────────────────────────────────── */
+.wac-toast {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  padding: 12px 20px;
+  border-radius: 10px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  z-index: 9999;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  animation: wacToastIn 0.25s ease;
+}
+
+.wac-toast--success {
+  background: #2E7D32;
+  color: #fff;
+}
+
+.wac-toast--error {
+  background: #C62828;
+  color: #fff;
+}
+
+@keyframes wacToastIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

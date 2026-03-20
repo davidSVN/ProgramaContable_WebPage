@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import './Usuarios.css';
 import { getUsuarios, createUsuario, updateUsuario, getUsuarioOrdenes } from '../../services/usuarios';
 import { BlockedAction } from '../ui/BlockedAction';
+import { useWhatsApp } from '../../whatsapp';
 
 /* ── Helpers ───────────────────────────────────────────── */
 const now = Date.now();
@@ -95,6 +96,7 @@ export default function UsuariosWrapper(props) {
 }
 
 function Usuarios() {
+  const { send: sendWA } = useWhatsApp();
   const [users, setUsers] = useState(INITIAL_USERS);
   const [totalItems, setTotalItems] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -576,6 +578,7 @@ function Usuarios() {
           closing={drawerClosing}
           onClose={closeDrawer}
           onEdit={() => { closeDrawer(); setEditUser(drawerUser); }}
+          onSendWA={sendWA}
           onInactivate={() => {
             const u = users.find(u => u.id === drawerUser.id) || drawerUser;
             setUsers(prev => prev.map(item => item.id === u.id ? { ...item, estado: 'Inactivo' } : item));
@@ -930,7 +933,7 @@ function mapEstado(order_status) {
   }
 }
 
-function UserDrawer({ user, closing, onClose, onEdit, onInactivate }) {
+function UserDrawer({ user, closing, onClose, onEdit, onInactivate, onSendWA }) {
   const [progressReady, setProgressReady] = useState(false);
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
@@ -939,19 +942,14 @@ function UserDrawer({ user, closing, onClose, onEdit, onInactivate }) {
 
   const handleWhatsAppUser = () => {
     if (!user.contacto) return;
-    const cleanPhone = user.contacto.replace(/\D/g, '');
-    const phone = cleanPhone.startsWith('57') ? cleanPhone : `57${cleanPhone}`;
-    let businessName = 'Lavalatu';
+    let negocio = 'Lavalatu';
     try {
-      const cached = localStorage.getItem('washflow_negocio_config');
-      if (cached) {
-        const config = JSON.parse(cached);
-        if (config.nombre_negocio) businessName = config.nombre_negocio;
-      }
+      const cfg = JSON.parse(localStorage.getItem('washflow_negocio_config') || '{}');
+      if (cfg.nombre_negocio) negocio = cfg.nombre_negocio;
     } catch (e) {}
-    const message = `Hola ${user.nombre}, te saludamos de ${businessName}. ¿En qué podemos ayudarte hoy?`;
-    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-    window.open(url, '_blank');
+    if (onSendWA) {
+      onSendWA(user.contacto, 'saludo', { nombre: user.nombre, negocio });
+    }
     setShowMoreMenu(false);
   };
 
