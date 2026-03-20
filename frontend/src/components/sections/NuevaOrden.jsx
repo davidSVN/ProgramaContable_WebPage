@@ -50,48 +50,49 @@ function isAgencyService(name = '') {
 /* ── WhatsApp Receipt Builder ───────────────────────────────── */
 function buildWhatsAppReceipt(payload) {
   const { negocio, orden } = payload;
-  const biz = negocio?.nombre_negocio || negocio?.nombre || 'Lavandería';
-  const tel = negocio?.telefono ? `📞 ${negocio.telefono}` : '';
-  const dir = negocio?.direccion ? `📍 ${negocio.direccion}` : '';
+  const biz = (negocio?.nombre || negocio?.nombre_negocio || 'LAVANDERÍA').toUpperCase();
+  const tel = negocio?.telefono ? `📞 *Tel:* ${negocio.telefono}` : '';
+  const dir = negocio?.direccion ? `📍 *Dir:* ${negocio.direccion}` : '';
+  const nit = negocio?.nit ? `*NIT:* ${negocio.nit}` : '';
 
   const header = [
     `🧺 *${biz}* 🧺`,
     [tel, dir].filter(Boolean).join('  '),
-    '━━━━━━━━━━━━━━━━',
+    nit,
+    '------------------------------------------------',
   ].filter(Boolean).join('\n');
 
   const info = [
-    `*Orden #${orden.numero}*`,
+    `📦 *ORDEN #${orden.numero}*`,
     `📅 ${orden.fecha}`,
-    `👤 ${orden.cliente}`,
-    orden.telefono_cliente ? `📞 ${orden.telefono_cliente}` : '',
+    `👤 *Cliente:* ${orden.cliente}`,
+    orden.telefono_cliente ? `📞 *Tel. Cliente:* ${orden.telefono_cliente}` : '',
   ].filter(Boolean).join('\n');
 
-  const maxNameLen = Math.max(...(orden.items || []).map(i => i.detalle.length), 20);
   const itemLines = (orden.items || []).map(i => {
-    const cant = String(i.cantidad).padStart(2);
-    const name = i.detalle.padEnd(maxNameLen + 2, ' ');
     const price = `$${Math.round(i.vlr_total).toLocaleString('es-CO')}`;
-    return `• ${cant}x ${name}${price}`;
+    return `• ${i.cantidad}x ${i.detalle} ... ${price}`;
   });
 
-  const itemsBlock = ['', '*Servicios:*', ...itemLines, '━━━━━━━━━━━━━━━━'].join('\n');
+  const itemsBlock = ['', '*SERVICIOS:*', ...itemLines, '------------------------------------------------'].join('\n');
 
   const subtotalStr = `$${Math.round(orden.subtotal || 0).toLocaleString('es-CO')}`;
-  const abonoVal = orden.abono || 0;
   const totalStr = `$${Math.round(orden.total || 0).toLocaleString('es-CO')}`;
+  const abonoVal = orden.abono || 0;
 
-  const totalesLines = [`Total:    *${subtotalStr}*`];
+  const totalesLines = [`Total Orden: *${subtotalStr}*`];
   if (abonoVal > 0) {
-    totalesLines.push(`Abono:   -$${Math.round(abonoVal).toLocaleString('es-CO')}`);
-    totalesLines.push(`Saldo:    *${totalStr}*`);
+    totalesLines.push(`Abono: -$${Math.round(abonoVal).toLocaleString('es-CO')}`);
+    totalesLines.push(`Saldo Pendiente: *${totalStr}*`);
   }
 
   const estado = (orden.total || 0) <= 0.5
-    ? '✅ *PAGADA*'
+    ? '✅ *ORDEN PAGADA*'
     : `⏳ *PENDIENTE: ${totalStr}*`;
 
-  return [header, info, itemsBlock, totalesLines.join('\n'), '', estado].join('\n');
+  const footer = negocio?.mensaje_pie ? `\n\n_${negocio.mensaje_pie}_` : '';
+
+  return [header, info, itemsBlock, totalesLines.join('\n'), '', estado, footer].join('\n');
 }
 
 /* ── Confetti ───────────────────────────────────────────────── */
