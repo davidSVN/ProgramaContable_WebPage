@@ -18,8 +18,107 @@ from app.services import wompi_service
 
 logger = logging.getLogger(__name__)
 
+# ─── Router autenticado (requiere JWT) ───────────────────────────────────────
 router = APIRouter(prefix="/wompi", tags=["Wompi Payments"])
 
+# ─── Router público (sin JWT — usado por Wompi para webhooks) ────────────────
+public_router = APIRouter(prefix="/wompi", tags=["Wompi Webhook"])
+
+
+# ── Endpoints públicos ────────────────────────────────────────────────────────
+
+@public_router.get("/webhook-test")
+async def webhook_test():
+    """Verifica que el endpoint del webhook es alcanzable sin JWT."""
+    return {"status": "ok", "message": "Webhook endpoint is reachable", "jwt_required": False}
+
+
+@public_router.post("/webhook")
+async def wompi_webhook(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Recibe eventos de Wompi. NO requiere JWT.
+    La seguridad está en la verificación de la firma SHA256.
+    """
+    logger.info("=" * 60)
+    logger.info("WOMPI WEBHOOK RECIBIDO")
+
+    try:
+        event_data = await request.json()
+    except Exception as e:
+        logger.error(f"Error parseando JSON: {str(e)}")
+        raise HTTPException(status_code=400, detail="JSON inválido")
+
+    event_type = event_data.get("event", "unknown")
+    data = event_data.get("data", {})
+    transaction_data = data.get("transaction", {})
+    reference = transaction_data.get("reference", "")
+    wompi_id = transaction_data.get("id", "")
+    tx_status = transaction_data.get("status", "")
+
+    logger.info(f"Evento: {event_type}")
+    logger.info(f"Referencia: {reference}")
+    logger.info(f"Wompi ID: {wompi_id}")
+    logger.info(f"Status Wompi: {tx_status}")
+
+    signature_valid = wompi_service.verify_event_signature(event_data)
+    logger.info(f"Firma válida: {signature_valid}")
+
+    if not signature_valid:
+        logger.warning("FIRMA INVÁLIDA — Rechazando webhook")
+        raise HTTPException(status_code=401, detail="Firma inválida")
+
+    if event_type != "transaction.updated":
+        logger.info(f"Evento ignorado (no es transaction.updated): {event_type}")
+        return {"status": "ignored"}
+
+    payment_method_data = transaction_data.get("payment_method", {})
+    payment_method_type = payment_method_data.get("type", "") if isinstance(payment_method_data, dict) else ""
+
+    if tx_status == "APPROVED":
+        logger.info(f"Procesando APROBADO: ref={reference}")
+        result = await wompi_service.process_approved_transaction(
+            db=db,
+            reference=reference,
+            wompi_transaction_id=wompi_id,
+            payment_method=payment_method_type,
+        )
+        if result:
+            logger.info(f"PLAN ACTIVADO: tenant={result.tenant_id}, plan={result.plan}")
+        else:
+            logger.error(f"No se encontró transacción para referencia: {reference}")
+
+    elif tx_status in ("DECLINED", "VOIDED", "ERROR"):
+        logger.info(f"Procesando FALLIDO: ref={reference}, status={tx_status}")
+        await wompi_service.process_failed_transaction(
+            db=db, reference=reference, status=tx_status, wompi_transaction_id=wompi_id,
+        )
+
+    logger.info("WEBHOOK PROCESADO OK")
+    logger.info("=" * 60)
+    return {"status": "ok"}
+
+
+@public_router.post("/process-renewals")
+async def process_renewals_endpoint(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Endpoint interno para procesar renovaciones automáticas.
+    Protegido por CRON_SECRET en el header X-Cron-Secret.
+    """
+    cron_secret = os.getenv("CRON_SECRET", "")
+    if not cron_secret or request.headers.get("X-Cron-Secret") != cron_secret:
+        raise HTTPException(status_code=401, detail="No autorizado")
+
+    results = await wompi_service.process_recurring_renewals(db)
+    return {"processed": len(results), "results": results}
+
+
+# ── Endpoints autenticados ────────────────────────────────────────────────────
 
 @router.post("/create-payment", response_model=PaymentIntegrityResponse)
 async def create_payment(
@@ -27,10 +126,7 @@ async def create_payment(
     db: AsyncSession = Depends(get_db),
     current_user: AppUser = Depends(get_current_user),
 ):
-    """
-    Crea un registro de pago pendiente y retorna los datos necesarios
-    para abrir el checkout de Wompi en el frontend.
-    """
+    """Crea un registro de pago pendiente y retorna los datos para el checkout de Wompi."""
     if body.plan not in ("basic", "premium"):
         raise HTTPException(status_code=400, detail="Plan inválido. Debe ser 'basic' o 'premium'.")
 
@@ -65,77 +161,17 @@ async def create_payment(
     )
 
 
-@router.post("/webhook")
-async def wompi_webhook(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Endpoint que recibe los eventos de Wompi (webhook).
-
-    IMPORTANTE: Este endpoint NO requiere autenticación JWT porque
-    es llamado directamente por los servidores de Wompi.
-    """
-    try:
-        event_data = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="JSON inválido")
-
-    logger.info(f"Webhook recibido de Wompi: {event_data.get('event', 'unknown')}")
-
-    if not wompi_service.verify_event_signature(event_data):
-        logger.warning("Webhook con firma inválida rechazado")
-        raise HTTPException(status_code=401, detail="Firma inválida")
-
-    event_type = event_data.get("event", "")
-    data = event_data.get("data", {})
-    transaction_data = data.get("transaction", {})
-
-    if event_type != "transaction.updated":
-        return {"status": "ignored", "event": event_type}
-
-    reference = transaction_data.get("reference", "")
-    wompi_id = transaction_data.get("id", "")
-    tx_status = transaction_data.get("status", "")
-    payment_method_data = transaction_data.get("payment_method", {})
-    payment_method_type = payment_method_data.get("type", "") if payment_method_data else ""
-
-    logger.info(f"Procesando transacción: ref={reference}, status={tx_status}")
-
-    if tx_status == "APPROVED":
-        result = await wompi_service.process_approved_transaction(
-            db=db,
-            reference=reference,
-            wompi_transaction_id=wompi_id,
-            payment_method=payment_method_type,
-        )
-        if result:
-            logger.info(f"Pago aprobado: ref={reference}, plan={result.plan}")
-        else:
-            logger.warning(f"Transacción no encontrada para referencia: {reference}")
-
-    elif tx_status in ("DECLINED", "VOIDED", "ERROR"):
-        await wompi_service.process_failed_transaction(
-            db=db,
-            reference=reference,
-            status=tx_status,
-            wompi_transaction_id=wompi_id,
-        )
-        logger.info(f"Pago fallido: ref={reference}, status={tx_status}")
-
-    return {"status": "ok"}
-
-
-@router.get("/verify/{reference}", response_model=PaymentTransactionResponse)
+@router.get("/verify/{reference}")
 async def verify_payment(
     reference: str,
     db: AsyncSession = Depends(get_db),
     current_user: AppUser = Depends(get_current_user),
 ):
     """
-    Verifica el estado de un pago por su referencia.
-    El frontend llama a este endpoint después de que el usuario
-    regresa del checkout de Wompi.
+    Verifica el estado de un pago. Si está PENDING en nuestra DB,
+    consulta directamente a Wompi por referencia y actualiza.
+    Es el respaldo del webhook — si el webhook no llegó, el polling
+    del frontend usa este endpoint para obtener el estado real.
     """
     stmt = select(PaymentTransaction).where(
         PaymentTransaction.reference == reference,
@@ -147,27 +183,42 @@ async def verify_payment(
     if not transaction:
         raise HTTPException(status_code=404, detail="Transacción no encontrada")
 
-    if transaction.status == "PENDING" and transaction.wompi_transaction_id:
-        wompi_data = await wompi_service.verify_transaction_with_wompi(
-            transaction.wompi_transaction_id
-        )
+    # Si ya tiene estado final, retornar directamente
+    if transaction.status in ("APPROVED", "DECLINED", "VOIDED", "ERROR"):
+        return transaction
+
+    # Si está PENDING, consultar directamente a Wompi por nuestra referencia
+    logger.info(f"Transacción PENDING, consultando Wompi por referencia: {reference}")
+
+    try:
+        wompi_data = await wompi_service.find_transaction_by_reference(reference)
+
         if wompi_data:
             tx_status = wompi_data.get("status", "")
+            wompi_id = wompi_data.get("id", "")
+            pm = wompi_data.get("payment_method", {})
+            pm_type = pm.get("type", "") if isinstance(pm, dict) else ""
+
+            logger.info(f"Wompi responde: status={tx_status}, id={wompi_id}")
+
             if tx_status == "APPROVED":
                 transaction = await wompi_service.process_approved_transaction(
                     db=db,
                     reference=reference,
-                    wompi_transaction_id=wompi_data.get("id", ""),
-                    payment_method=wompi_data.get("payment_method", {}).get("type", ""),
+                    wompi_transaction_id=wompi_id,
+                    payment_method=pm_type,
                 )
             elif tx_status in ("DECLINED", "VOIDED", "ERROR"):
                 transaction = await wompi_service.process_failed_transaction(
                     db=db,
                     reference=reference,
                     status=tx_status,
-                    wompi_transaction_id=wompi_data.get("id", ""),
+                    wompi_transaction_id=wompi_id,
                 )
+    except Exception as e:
+        logger.error(f"Error verificando con Wompi: {str(e)}")
 
+    await db.refresh(transaction)
     return transaction
 
 
@@ -236,10 +287,7 @@ async def save_payment_source(
     db: AsyncSession = Depends(get_db),
     current_user: AppUser = Depends(get_current_user),
 ):
-    """
-    Recibe un token de tarjeta del widget de Wompi,
-    crea una fuente de pago y la guarda en el tenant.
-    """
+    """Recibe un token de tarjeta, crea una fuente de pago y la guarda en el tenant."""
     token = body.get("token")
     if not token:
         raise HTTPException(status_code=400, detail="Token requerido")
@@ -249,7 +297,6 @@ async def save_payment_source(
 
     try:
         acceptance_token = await wompi_service.get_acceptance_token()
-
         source_data = await wompi_service.tokenize_card_and_create_source(
             token=token,
             customer_email=current_user.email,
@@ -291,21 +338,3 @@ async def toggle_auto_renew(
     await db.commit()
 
     return {"auto_renew": tenant.auto_renew}
-
-
-@router.post("/process-renewals")
-async def process_renewals_endpoint(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Endpoint interno para procesar renovaciones automáticas.
-    Protegido por CRON_SECRET en el header X-Cron-Secret.
-    Llamar diariamente desde cron-job.org o similar.
-    """
-    cron_secret = os.getenv("CRON_SECRET", "")
-    if not cron_secret or request.headers.get("X-Cron-Secret") != cron_secret:
-        raise HTTPException(status_code=401, detail="No autorizado")
-
-    results = await wompi_service.process_recurring_renewals(db)
-    return {"processed": len(results), "results": results}

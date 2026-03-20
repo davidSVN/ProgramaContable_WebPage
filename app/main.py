@@ -67,6 +67,7 @@ app.include_router(reportes.router, prefix="/api/reportes", tags=["IA & Reportes
 app.include_router(ordenes.router, prefix="/api/ordenes", tags=["Órdenes B2C"], dependencies=_sub)
 app.include_router(b2b.router, prefix="/api/b2b", tags=["Facturación B2B"], dependencies=_sub)
 app.include_router(app_users.router, prefix="/api")
+app.include_router(wompi.public_router, prefix="/api")  # Sin JWT — webhook de Wompi
 app.include_router(wompi.router, prefix="/api")
 app.include_router(settings.router, prefix="/api/settings", tags=["Settings"], dependencies=_sub)
 app.include_router(configuracion.router, prefix="/api/configuracion", tags=["Configuración"], dependencies=_sub)

@@ -69,3 +69,49 @@ export async function getPaymentHistory() {
   const data = await api.get('/wompi/payment-history');
   return data;
 }
+
+/**
+ * Hace polling al backend cada intervalMs hasta que el pago tenga
+ * un estado final (APPROVED, DECLINED, VOIDED, ERROR) o se agoten los intentos.
+ *
+ * Por qué existe: el webhook de Wompi puede tardar unos segundos en llegar.
+ * Mientras tanto, nuestra DB tiene status=PENDING. Este polling consulta
+ * directamente a Wompi vía el backend hasta confirmar el estado real.
+ *
+ * @param {string} reference - Referencia del pago (WF-xxx-timestamp)
+ * @param {object} options
+ * @param {number} options.intervalMs - ms entre intentos (default 4000)
+ * @param {number} options.maxAttempts - máximo de intentos (default 30 = ~2 min)
+ * @param {function} options.onPending - callback(attempt, max) mientras sigue PENDING
+ */
+export function pollPaymentStatus(reference, {
+  intervalMs = 4000,
+  maxAttempts = 30,
+  onPending = null,
+} = {}) {
+  let attempts = 0;
+
+  return new Promise((resolve) => {
+    const poll = setInterval(async () => {
+      attempts++;
+      try {
+        const result = await api.get(`/wompi/verify/${reference}`);
+
+        if (['APPROVED', 'DECLINED', 'VOIDED', 'ERROR'].includes(result.status)) {
+          clearInterval(poll);
+          resolve(result);
+          return;
+        }
+
+        if (onPending) onPending(attempts, maxAttempts);
+      } catch (err) {
+        console.error('Error en polling de pago:', err);
+      }
+
+      if (attempts >= maxAttempts) {
+        clearInterval(poll);
+        resolve({ status: 'PENDING', reference });
+      }
+    }, intervalMs);
+  });
+}
