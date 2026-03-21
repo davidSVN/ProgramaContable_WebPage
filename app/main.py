@@ -12,7 +12,7 @@ load_dotenv()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Evento de inicio: crea las tablas en la BD y arranca scheduler."""
-    # await init_db()  # Temporarily disabled to debug hang
+    await init_db()  # Temporarily disabled to debug hang
     
     # Iniciar scheduler en segundo plano
     import asyncio
@@ -41,7 +41,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -51,7 +55,7 @@ app.add_middleware(
 
 from fastapi import Depends
 from app.dependencies import require_suscripcion_activa
-from app.routers import auth, superadmin, gastos, proveedores, servicios, usuarios, ordenes, b2b, app_users, settings, reportes, suscripcion, configuracion, wompi
+from app.routers import auth, superadmin, gastos, proveedores, servicios, usuarios, ordenes, b2b, app_users, settings, reportes, suscripcion, configuracion, wompi, join_requests
 
 _sub = [Depends(require_suscripcion_activa)]
 
@@ -68,6 +72,7 @@ app.include_router(reportes.router, prefix="/api/reportes", tags=["IA & Reportes
 app.include_router(ordenes.router, prefix="/api/ordenes", tags=["Órdenes B2C"], dependencies=_sub)
 app.include_router(b2b.router, prefix="/api/b2b", tags=["Facturación B2B"], dependencies=_sub)
 app.include_router(app_users.router, prefix="/api")
+app.include_router(join_requests.router, prefix="/api")
 app.include_router(wompi.public_router, prefix="/api")  # Sin JWT — webhook de Wompi
 app.include_router(wompi.router, prefix="/api")
 app.include_router(settings.router, prefix="/api/settings", tags=["Settings"], dependencies=_sub)

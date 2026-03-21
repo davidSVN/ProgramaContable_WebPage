@@ -517,6 +517,34 @@ class EntregarOrdenResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+# ─── Setup / Join Requests ────────────────────────────────────────────────────
+
+class SetupBusinessRequest(BaseModel):
+    nombre_negocio: str
+
+
+class SetupJoinRequest(BaseModel):
+    nombre_negocio: str
+
+
+class JoinRequestResponse(BaseModel):
+    id: int
+    user_id: int
+    tenant_id: int
+    status: str
+    created_at: datetime
+    username: Optional[str] = None
+    email: Optional[str] = None
+    tenant_nombre: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class SetupStatusResponse(BaseModel):
+    role: str
+    join_request: Optional[dict] = None
+
+
 # ─── App Users Management ─────────────────────────────────────────────────────
 
 class AppUserCreate(BaseModel):
@@ -605,7 +633,7 @@ class NegocioConfig(BaseModel):
     logo_width: int = 50
 
 class NegocioConfigResponse(NegocioConfig):
-    tenant_id: int
+    tenant_id: Optional[int] = None
 
 
 # ─── Business Settings ────────────────────────────────────────────────────────

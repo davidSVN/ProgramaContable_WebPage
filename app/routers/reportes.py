@@ -1,6 +1,8 @@
 from datetime import date, datetime, timedelta
 from typing import List, Optional
 import pandas as pd
+import pytz
+from collections import Counter
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -205,6 +207,9 @@ async def reporte_clientes_riesgo(
     if current_user.tenant_id is not None:
         stmt = stmt.where(LaundryUser.tenant_id == current_user.tenant_id)
         
+    # Solo usuarios activos
+    stmt = stmt.where(LaundryUser.state == True)
+        
     stmt = (
         stmt.group_by(LaundryUser.user_id, LaundryUser.user_name, LaundryUser.user_contact)
         .having(func.max(OrderHeader.date) < limite)
@@ -272,15 +277,20 @@ async def reporte_ml_perfiles(
     engine = ml_engine.get_engine(current_user.tenant_id)
     perfiles = engine.calcular_perfiles(orders_df)
 
-    # Fetch contacts for all user_ids
+    # Fetch only active users and their contacts
     user_ids = [p.user_id for p in perfiles]
     contacts_result = await db.execute(
         select(LaundryUser.user_id, LaundryUser.user_contact)
-        .where(LaundryUser.user_id.in_(user_ids))
+        .where(
+            LaundryUser.user_id.in_(user_ids),
+            LaundryUser.state == True
+        )
     )
-    contacts_map = {r.user_id: r.user_contact for r in contacts_result.all()}
+    rows_active = contacts_result.all()
+    contacts_map = {r.user_id: r.user_contact for r in rows_active}
+    active_user_ids = set(contacts_map.keys())
 
-    # Map to frontend keys
+    # Map only active users
     SEG_MAP = {
         "campeon": "Campeones",
         "leal": "Leales",
@@ -302,7 +312,7 @@ async def reporte_ml_perfiles(
         "ultima_visita": p.ultimo_pedido,
         "total_ordenes": p.total_ordenes,
         "total_historico": p.total_gastado
-    } for p in perfiles]
+    } for p in perfiles if p.user_id in active_user_ids]
 
 @router.get("/ml/perfil/{user_id}", summary="Perfil individual de cliente (ML)")
 async def reporte_ml_perfil_unico(
@@ -376,13 +386,18 @@ async def reporte_ml_descuentos(
     engine = ml_engine.get_engine(current_user.tenant_id)
     perfiles = engine.calcular_perfiles(orders_df)
 
-    # Fetch contacts for all user_ids
+    # Fetch only active users and their contacts
     user_ids = [p.user_id for p in perfiles]
     contacts_result = await db.execute(
         select(LaundryUser.user_id, LaundryUser.user_contact)
-        .where(LaundryUser.user_id.in_(user_ids))
+        .where(
+            LaundryUser.user_id.in_(user_ids),
+            LaundryUser.state == True
+        )
     )
-    contacts_map = {r.user_id: r.user_contact for r in contacts_result.all()}
+    rows_active = contacts_result.all()
+    contacts_map = {r.user_id: r.user_contact for r in rows_active}
+    active_user_ids = set(contacts_map.keys())
 
     # Map to frontend keys (Reusable mapping)
     SEG_MAP = {
@@ -412,7 +427,7 @@ async def reporte_ml_descuentos(
         "total_gastado": p.total_gastado,
         "descuento_sugerido": p.descuento_sugerido,
         "razon": p.razon_descuento
-    } for p in perfiles]
+    } for p in perfiles if p.user_id in active_user_ids]
 
     # Filter only those with suggestions
     oportunidades = [p for p in perfiles_mapped if p["descuento_sugerido"] is not None]
@@ -490,8 +505,6 @@ async def resumen_dia(
     current_user: AppUser = Depends(get_current_user),
 ):
     """Resumen completo del día: órdenes, pagos, egresos y servicios."""
-    import pytz
-    from collections import Counter
 
     tz_colombia = pytz.timezone("America/Bogota")
     hoy = fecha or datetime.now(tz_colombia).date()

@@ -10,11 +10,13 @@ export const DEFAULT_TEMPLATES = {
     id: 'deuda',
     label: 'Recordatorio de deuda',
     category: 'cobros',
-    variables: ['nombre', 'negocio', 'orden_id', 'saldo', 'descripcion'],
+    variables: ['nombre', 'negocio', 'orden_id', 'saldo'],
     default: `Hola {{nombre}}, te saludamos de *{{negocio}}* 👋
 
 Te recordamos que tienes un saldo pendiente de *\${{saldo}}* correspondiente a la orden #{{orden_id}}.
-🧺 _{{descripcion}}_
+------------------------------------------------
+{{descripcion}}
+------------------------------------------------
 
 ¿Cuándo podrías pasar a cancelarlo? ¡Muchas gracias! 🙏`,
   },
@@ -93,9 +95,40 @@ Notamos que llevas {{dias}} días sin visitarnos y nos gustaría volverte a ver.
 Como gesto especial, queremos ofrecerte un *{{descuento}}% de descuento* en tu próxima visita.
 ¡Esperamos verte pronto! 🧺`,
   },
+
+  // ── Órdenes ───────────────────────────────────────────
+  nueva_orden: {
+    id: 'nueva_orden',
+    label: 'Creación de Orden',
+    category: 'ordenes',
+    variables: [
+      'nombre_cliente', 'num_orden', 'fecha', 'servicios', 
+      'total', 'abono', 'saldo', 'estado_pago',
+      'negocio', 'direccion', 'telefono', 'nit', 'mensaje_pie'
+    ],
+    default: `🧺 *{{negocio}}* 🧺
+📞 *Tel:* {{telefono}}  📍 *Dir:* {{direccion}}
+*NIT:* {{nit}}
+------------------------------------------------
+📦 *ORDEN #{{num_orden}}*
+📅 {{fecha}}
+👤 *Cliente:* {{nombre_cliente}}
+------------------------------------------------
+*SERVICIOS:*
+{{servicios}}
+------------------------------------------------
+Total Orden: *{{total}}*
+Abono: -{{abono}}
+Saldo Pendiente: *{{saldo}}*
+
+{{estado_pago}}
+
+_{{mensaje_pie}}_`,
+  },
 }
 
 export const CATEGORIES = [
+  { id: 'ordenes',   label: 'Órdenes',   emoji: '📦' },
   { id: 'cobros',    label: 'Cobros',    emoji: '💰' },
   { id: 'general',   label: 'General',   emoji: '💬' },
   { id: 'marketing', label: 'Marketing', emoji: '📣' },

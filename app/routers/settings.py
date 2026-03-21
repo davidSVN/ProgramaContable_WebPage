@@ -123,8 +123,11 @@ async def get_business_settings(
     
     mapping = {s.key: s.value for s in settings}
     
+    # Fallback al nombre del tenant si la configuración no existe
+    tenant_name = current_user.tenant.nombre if current_user.tenant else "Lavalatu"
+
     return {
-        "business_name": mapping.get("business_name", "LAVALATU"),
+        "business_name": mapping.get("business_name", tenant_name),
         "business_address": mapping.get("business_address", "Dirección no configurada"),
         "business_phone": mapping.get("business_phone", "0000000000"),
         "business_logo": mapping.get("business_logo")

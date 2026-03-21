@@ -18,23 +18,33 @@ async def get_suscripcion_info(
     current_user: AppUser = Depends(get_current_user),
 ):
     """Retorna la información de suscripción del tenant actual."""
-    if current_user.role == "superadmin" and not current_user.tenant:
+    if current_user.role == "superadmin":
         plan = "superadmin"
+        features = {
+            "puede_crear_ordenes":       True,
+            "puede_ver_historial":       True,
+            "puede_gestionar_usuarios":  True,
+            "puede_ver_reportes_basicos": True,
+            "puede_ver_ml":              True,
+            "puede_ver_rfm":             True,
+            "puede_ver_forecast":        True,
+        }
     else:
         plan = current_user.tenant.plan if current_user.tenant else "none"
-    features = {
-        "puede_crear_ordenes":       plan != "none",
-        "puede_ver_historial":       plan != "none",
-        "puede_gestionar_usuarios":  plan != "none",
-        "puede_ver_reportes_basicos": plan != "none",
-        "puede_ver_ml":              plan == "premium",
-        "puede_ver_rfm":             plan == "premium",
-        "puede_ver_forecast":        plan == "premium",
-    }
+        features = {
+            "puede_crear_ordenes":       plan != "none",
+            "puede_ver_historial":       plan != "none",
+            "puede_gestionar_usuarios":  plan != "none",
+            "puede_ver_reportes_basicos": plan != "none",
+            "puede_ver_ml":              plan == "premium",
+            "puede_ver_rfm":             plan == "premium",
+            "puede_ver_forecast":        plan == "premium",
+        }
+        
     return SuscripcionInfo(
         plan_actual=plan,
-        puede_usar_app=plan != "none",
-        es_premium=plan == "premium",
+        puede_usar_app=True if current_user.role == "superadmin" else (plan != "none"),
+        es_premium=True if current_user.role == "superadmin" else (plan == "premium"),
         features=features,
     )
 

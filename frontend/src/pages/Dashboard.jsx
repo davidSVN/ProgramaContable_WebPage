@@ -19,8 +19,9 @@ export default function Dashboard() {
     getMe()
       .then(u => {
         setUser(u);
-        const p = u.plan ?? localStorage.getItem('washflow_plan') ?? 'none';
+        const p = u.plan ?? 'none';
         localStorage.setItem('washflow_plan', p);
+        localStorage.setItem('washflow_role', u.role);
         setPlan(p);
       })
       .catch(() => navigate('/login'))

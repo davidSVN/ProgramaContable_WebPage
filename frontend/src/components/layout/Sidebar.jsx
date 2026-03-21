@@ -24,6 +24,11 @@ const NAV = [
     icon: <WhatsAppIcon />,
   },
   {
+    id: 'gastos-negocio',
+    label: 'Gastos del Negocio',
+    icon: <DollarSignIcon />,
+  },
+  {
     id: 'ordenes',
     label: 'Órdenes',
     icon: <PackageIcon />,
@@ -31,7 +36,6 @@ const NAV = [
     children: [
       { id: 'historial-ordenes',  label: 'Historial de Órdenes',   emoji: '🕐' },
       { id: 'servicios-ordenes',  label: 'Servicios por Órdenes',  emoji: '📋' },
-      { id: 'gastos-negocio',     label: 'Gastos del Negocio',     emoji: '💸' },
       { id: 'facturas-cobrar',    label: 'Facturas por Cobrar',    emoji: '🧾' },
       { id: 'servicios-terceros', label: 'Servicios en Agencia',   emoji: '📤' },
     ],
@@ -176,11 +180,11 @@ export default function Sidebar({ activeSection, onNavigate, user, collapsed, on
 }
 
 /* ── Plan Badge ─────────────────────────────────────────── */
-const PLAN_DOT_COLORS = { premium: '#FF6B2B', basic: '#185FA5', none: '#9B9790', superadmin: '#9B9790' };
-const PLAN_LABELS = { premium: 'Premium ⭐', basic: 'Basic', none: 'Sin plan', superadmin: 'Superadmin' };
+const PLAN_DOT_COLORS = { premium: '#FF6B2B', basic: '#185FA5', none: '#9B9790', superadmin: '#FF6B2B' };
+const PLAN_LABELS = { premium: 'Premium ⭐', basic: 'Basic', none: 'Sin plan', superadmin: 'SuperAdmin 👑' };
 
 function PlanBadge({ collapsed, onNavigate }) {
-  const plan = localStorage.getItem('washflow_plan') ?? 'none';
+  const { plan } = usePlan();
   const dotColor = PLAN_DOT_COLORS[plan] || '#9B9790';
 
   if (collapsed) {
@@ -340,6 +344,15 @@ function WhatsAppIcon() {
         a8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8
         8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5
         a8.48 8.48 0 0 1 8 8v.5z"/>
+    </svg>
+  );
+}
+
+function DollarSignIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="1" x2="12" y2="23"/>
+      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
     </svg>
   );
 }

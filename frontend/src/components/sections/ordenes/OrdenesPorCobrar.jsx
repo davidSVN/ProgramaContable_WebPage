@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
 import { getOrdenesDebe, getOrdenesDebeStats, marcarPagado } from '../../../services/ordenesCobrar';
+import { api } from '../../../services/api';
 import './OrdenesPorCobrar.css';
 import { BlockedAction } from '../../ui/BlockedAction';
 import { useWhatsApp } from '../../../whatsapp';
@@ -131,22 +132,41 @@ export default function OrdenesPorCobrar({ user, onNavigate }) {
   const [toast, setToast]               = useState(null);
   const [isSubmiting, setIsSubmiting] = useState(false);
 
-  const handleWhatsAppClick = (orden) => {
+  const handleWhatsAppClick = async (orden) => {
     if (!orden.user_contact) {
       showToast('El cliente no tiene un número de contacto registrado', 'error');
       return;
     }
+
     let negocio = 'Lavalatu';
     try {
       const cfg = JSON.parse(localStorage.getItem('washflow_negocio_config') || '{}');
       if (cfg.nombre_negocio) negocio = cfg.nombre_negocio;
     } catch (e) {}
+
+    let descripcion = orden.items_description || '';
+
+    // If description is empty (old orders), fetch details and format them
+    if (!descripcion) {
+      try {
+        const detalles = await api.get(`/ordenes/${orden.id}/detalle`);
+        if (Array.isArray(detalles) && detalles.length > 0) {
+          descripcion = detalles.map(d => {
+            const price = `$${Math.round(d.total_item_price).toLocaleString('es-CO')}`;
+            return `• ${d.quantity}x ${d.service_name}${d.description ? ' ('+d.description+')' : ''} ... ${price}`;
+          }).join('\n');
+        }
+      } catch (e) {
+        console.error('Error fetching order details for WA:', e);
+      }
+    }
+
     send(orden.user_contact, 'deuda', {
       nombre: orden.user_name,
       negocio,
       orden_id: orden.id,
       saldo: new Intl.NumberFormat('es-CO').format(orden.balance_due),
-      descripcion: orden.items_description || '',
+      descripcion,
     });
   };
 

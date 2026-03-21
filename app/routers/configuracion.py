@@ -2,11 +2,11 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from app.database import get_db
 from app.dependencies import get_current_user, require_admin_or_above
-from app.models import AppUser, AppSettings
+from app.models import AppUser, AppSettings, Tenant
 from app.schemas import NegocioConfig, NegocioConfigResponse
 
 router = APIRouter()
@@ -76,7 +76,9 @@ async def get_negocio_config(
     setting = result.scalars().first()
 
     if not setting:
-        return NegocioConfigResponse(tenant_id=current_user.tenant_id)
+        # Pre-populate nombre from Tenant if no config saved yet
+        tenant_nombre = current_user.tenant.nombre if current_user.tenant else ""
+        return NegocioConfigResponse(tenant_id=current_user.tenant_id, nombre=tenant_nombre)
 
     try:
         data = json.loads(setting.value)
@@ -117,6 +119,27 @@ async def update_negocio_config(
             value=val_json,
         )
         db.add(setting)
+
+    # Sincronizar Tenant.nombre para que los empleados puedan buscar por nombre exacto
+    if body.nombre and current_user.tenant_id:
+        tenant_result = await db.execute(
+            select(Tenant).where(Tenant.id == current_user.tenant_id)
+        )
+        tenant = tenant_result.scalars().first()
+        if tenant and func.lower(tenant.nombre) != body.nombre.strip().lower():
+            # Verificar que el nuevo nombre no esté en uso por otro tenant
+            duplicate = await db.execute(
+                select(Tenant).where(
+                    func.lower(Tenant.nombre) == body.nombre.strip().lower(),
+                    Tenant.id != current_user.tenant_id,
+                )
+            )
+            if duplicate.scalars().first():
+                raise HTTPException(
+                    status_code=400,
+                    detail="Ya existe otro negocio con ese nombre. Elige uno diferente.",
+                )
+            tenant.nombre = body.nombre.strip()
 
     try:
         await db.commit()

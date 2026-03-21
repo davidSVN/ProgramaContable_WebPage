@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { usePlan } from '../../hooks/usePlan';
 import { clearToken } from '../../services/auth';
 import { useNavigate } from 'react-router-dom';
 
@@ -19,8 +20,8 @@ const SECTION_LABELS = {
 };
 
 function NoBannerSuscripcion({ onNavigate }) {
-  const plan = localStorage.getItem('washflow_plan') ?? 'none';
-  if (plan !== 'none') return null;
+  const { isActive } = usePlan();
+  if (isActive) return null;
   return (
     <div className="topbar-sub-banner">
       <span>🔒 Sin suscripción activa — Las funciones están bloqueadas</span>
@@ -115,7 +116,7 @@ export default function Topbar({ activeSection, user, onNavigate }) {
               <button
                 className="topbar-dropdown__item"
                 role="menuitem"
-                onClick={() => { setDropdownOpen(false); }}
+                onClick={() => { onNavigate('usuarios-app'); setDropdownOpen(false); }}
               >
                 <UserIcon />
                 Mi perfil
