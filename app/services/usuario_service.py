@@ -44,6 +44,7 @@ class UsuarioDTO:
     last_visit:       Optional[datetime] = None
     pending_invoices: int = 0
     ordenes_mes: int = 0
+    notas: Optional[str] = None
 
     @classmethod
     def from_orm(cls, u, total_orders=0, total_spent=0.0, last_visit=None, pending_invoices=0, ordenes_mes=0) -> "UsuarioDTO":
@@ -63,7 +64,8 @@ class UsuarioDTO:
             total_spent       = total_spent or 0.0,
             last_visit        = last_visit,
             pending_invoices  = pending_invoices,
-            ordenes_mes       = ordenes_mes
+            ordenes_mes       = ordenes_mes,
+            notas             = u.notas
         )
 
 
@@ -72,21 +74,19 @@ class UsuarioDTO:
 # ──────────────────────────────────────────────────────────────
 
 def _apply_search_filters(stmt, search_names: List[str], search_contacts: List[str]):
-    """Aplica filtros de búsqueda por nombre o contacto (insensible a acentos y case)."""
-    if search_names:
-        name_filters = [
-            func.unaccent(LaundryUser.user_name).ilike(func.unaccent(f"%{n}%")) 
-            for n in search_names if n
-        ]
-        if name_filters:
-            stmt = stmt.where(or_(*name_filters))
-    if search_contacts:
-        contact_filters = [
-            func.unaccent(LaundryUser.user_contact).ilike(func.unaccent(f"%{c}%")) 
-            for c in search_contacts if c
-        ]
-        if contact_filters:
-            stmt = stmt.where(or_(*contact_filters))
+    """Aplica filtros de búsqueda por nombre o contacto combinados."""
+    tokens = [n for n in (search_names or []) if n] + [c for c in (search_contacts or []) if c]
+    if not tokens:
+        return stmt
+    
+    for t in tokens:
+        pattern = func.unaccent(f"%{t}%")
+        stmt = stmt.where(
+            or_(
+                func.unaccent(LaundryUser.user_name).ilike(pattern),
+                func.unaccent(LaundryUser.user_contact).ilike(pattern)
+            )
+        )
     return stmt
 
 
@@ -301,6 +301,7 @@ async def crear(
             user_type         = data.user_type,
             payment_condition = data.payment_condition,
             user_institute    = user_institute,
+            notas             = data.notas,
         )
         db.add(nuevo)
         await db.commit()
@@ -382,6 +383,8 @@ async def actualizar(
         usuario.user_type = update_data["user_type"]
     if "payment_condition" in update_data:
         usuario.payment_condition = update_data["payment_condition"]
+    if "notas" in update_data:
+        usuario.notas = update_data["notas"]
 
     try:
         await db.commit()

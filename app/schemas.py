@@ -219,24 +219,26 @@ class ServicioStatsResponse(BaseModel):
 class UsuarioCreate(BaseModel):
     nombre: str
     email: Optional[str] = None
-    contacto: str
+    contacto: str = Field(pattern=r'^\d{10}$')
     nit: Optional[str] = None
     direccion: Optional[str] = None
     user_type: str = "B2C"
     payment_condition: str = "Contado"
     activo: bool = True
     loyalty_level: Optional[str] = None
+    notas: Optional[str] = None
 
 class UsuarioUpdate(BaseModel):
     nombre: Optional[str] = None
     email: Optional[str] = None
-    contacto: Optional[str] = None
+    contacto: Optional[str] = Field(default=None, pattern=r'^\d{10}$')
     nit: Optional[str] = None
     direccion: Optional[str] = None
     user_type: Optional[str] = None
     payment_condition: Optional[str] = None
     activo: Optional[bool] = None
     loyalty_level: Optional[str] = None
+    notas: Optional[str] = None
 
 class UsuarioResponse(BaseModel):
     user_id: int
@@ -247,6 +249,7 @@ class UsuarioResponse(BaseModel):
     user_address: Optional[str] = None
     state: bool
     loyalty_level: Optional[str] = None
+    notas: Optional[str] = None
     user_type: str
     payment_condition: str
     saldo_a_favor: float = 0.0

@@ -265,8 +265,12 @@ async def crear_orden(
             svc_obj = res_svc.scalars().first()
             
             if s.get("is_agency"):
-                # Si el frontend ya lo marcó como agencia, usamos el costo que mande (o 0 si no manda)
-                cost = float(s.get("spent_per_service", 0.0))
+                # Prioridad: costo del maestro de servicios en BD; el frontend no garantiza enviarlo
+                frontend_cost = float(s.get("spent_per_service", 0.0))
+                if svc_obj and (svc_obj.spent_per_service or 0) > 0:
+                    cost = float(svc_obj.spent_per_service) * s.get("qty", 1)
+                else:
+                    cost = frontend_cost
                 s["spent_per_service"] = cost
                 s["is_agency"] = True
                 total_spent_per_order += cost

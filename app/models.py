@@ -94,6 +94,7 @@ class LaundryUser(Base):
     user_type = Column(String(20), default="B2C")  # "B2C" | "B2B"
     payment_condition = Column(String(50), default="Contado")  # "Contado" | "Al crédito"
     saldo_a_favor = Column(Float, default=0.0, nullable=False)
+    notas = Column(Text, nullable=True)
     tenant = relationship("Tenant")
     orders = relationship("OrderHeader", back_populates="buyer")
     abonos = relationship("AbonoInstitucional", back_populates="user", cascade="all, delete-orphan")
