@@ -125,6 +125,7 @@ function Usuarios() {
           page: currentPage,
           limit: pageSize,
           search: debouncedSearch,
+          contact: debouncedContact,
           estado: filters.estado,
           nivel: filters.nivel,
           user_type: 'B2C'
@@ -154,7 +155,7 @@ function Usuarios() {
       }
     }
     loadData();
-  }, [currentPage, pageSize, debouncedSearch, filters.estado, filters.nivel]);
+  }, [currentPage, pageSize, debouncedSearch, debouncedContact, filters.estado, filters.nivel]);
 
   const mapBackendUser = (u) => ({
     id: u.user_id,
@@ -201,9 +202,6 @@ function Usuarios() {
         (u.nombre?.toLowerCase() || '').includes(s) || 
         (u.email?.toLowerCase() || '').includes(s)
       );
-    }
-    if (debouncedContact) {
-      result = result.filter(u => u.contacto.includes(debouncedContact));
     }
     if (filters.estado) {
       result = result.filter(u => u.estado === filters.estado);
@@ -773,7 +771,7 @@ function UserModal({ onClose, onSave, initialData = null }) {
   const validate = () => {
     const e = {};
     if (!form.nombre.trim()) e.nombre = 'El nombre es requerido';
-    if (!form.contacto.trim()) e.contacto = 'El contacto es requerido';
+    if (!/^\d{10}$/.test(form.contacto)) e.contacto = 'El contacto debe tener exactamente 10 dígitos numéricos';
     return e;
   };
 
@@ -791,16 +789,21 @@ function UserModal({ onClose, onSave, initialData = null }) {
       let result;
       if (isEdit) {
         result = await updateUsuario(initialData.id, {
-          user_name: form.nombre,
+          nombre: form.nombre,
           email: form.email,
-          user_contact: form.contacto,
-          user_address: form.direccion,
+          contacto: form.contacto,
+          direccion: form.direccion,
           notas: form.notas,
-          state: form.estado,
+          activo: form.estado,
           user_type: 'B2C'
         });
       } else {
-        result = await createUsuario(form);
+        const createData = {
+          ...form,
+          activo: form.estado
+        };
+        delete createData.estado;
+        result = await createUsuario(createData);
       }
       onSave(result);
     } catch (err) {
@@ -858,13 +861,19 @@ function UserModal({ onClose, onSave, initialData = null }) {
               <input
                 id="nu-contacto"
                 className={`u-input ${errors.contacto ? 'error' : ''}`}
-                placeholder="310 452 7891"
+                placeholder="3104527891"
+                inputMode="numeric"
+                maxLength={10}
                 value={form.contacto}
-                onChange={e => { setForm(f => ({ ...f, contacto: e.target.value })); setErrors(er => ({ ...er, contacto: '' })); }}
+                onChange={e => {
+                  const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                  setForm(f => ({ ...f, contacto: val }));
+                  setErrors(er => ({ ...er, contacto: '' }));
+                }}
               />
               {errors.contacto
                 ? <span className="u-error-msg">⚠ {errors.contacto}</span>
-                : <span className="u-field-hint">Formato: 3XX XXX XXXX</span>
+                : <span className="u-field-hint">{form.contacto.length}/10 dígitos</span>
               }
             </div>
 

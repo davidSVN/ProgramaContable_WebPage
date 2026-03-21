@@ -270,12 +270,19 @@ class MLEngine:
         hoy = datetime.utcnow()
         historico = []
         for i in range(11, -1, -1):
-            m_start = (hoy.replace(day=1) - timedelta(days=i*30)).replace(day=1)
-            # Find next month start
-            if m_start.month == 12:
-                m_end = datetime(m_start.year + 1, 1, 1) - timedelta(seconds=1)
+            # Calculate month and year exactly
+            month_idx = (hoy.month - 1 - i) % 12
+            year_offset = (hoy.month - 1 - i) // 12
+            month_val = month_idx + 1
+            year_val = hoy.year + year_offset
+            
+            m_start = datetime(year_val, month_val, 1)
+            
+            # Find next month start for m_end
+            if month_val == 12:
+                m_end = datetime(year_val + 1, 1, 1) - timedelta(seconds=1)
             else:
-                m_end = datetime(m_start.year, m_start.month + 1, 1) - timedelta(seconds=1)
+                m_end = datetime(year_val, month_val + 1, 1) - timedelta(seconds=1)
             
             o_m = filtrar(orders_df, "created_at", m_start, m_end)
             g_m = filtrar(gastos_df, "spent_date", m_start, m_end)

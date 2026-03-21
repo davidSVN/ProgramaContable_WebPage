@@ -1,14 +1,15 @@
 import { api } from './api';
 
 // GET /api/usuarios?page=1&limit=15&search=&estado=&nivel=&user_type=B2C
-export async function getUsuarios({ page = 1, limit = 15, search = '', estado = '', nivel = '', user_type = 'B2C' } = {}) {
+export async function getUsuarios({ page = 1, limit = 15, search = '', contact = '', estado = '', nivel = '', user_type = 'B2C' } = {}) {
   const offset = (page - 1) * limit;
-  const params = new URLSearchParams({ 
-    limit, 
-    offset, 
-    user_type 
+  const params = new URLSearchParams({
+    limit,
+    offset,
+    user_type
   });
   if (search) params.append('search_names', search);
+  if (contact) params.append('search_contacts', contact);
   
   // Use centralized api service
   const data = await api.get(`/usuarios?${params}`);
