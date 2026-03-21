@@ -67,8 +67,8 @@ async def require_superadmin(
 async def require_admin_or_above(
     current_user: AppUser = Depends(get_current_user),
 ) -> AppUser:
-    """Lanza HTTPException 403 si el usuario es empleado."""
-    if current_user.role == "empleado":
+    """Lanza HTTPException 403 si el usuario es empleado o pending."""
+    if current_user.role in ("empleado", "pending"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Acceso denegado: se requiere rol admin o superior",
@@ -79,9 +79,22 @@ async def require_admin_or_above(
 async def require_suscripcion_activa(
     current_user: AppUser = Depends(get_current_user),
 ) -> AppUser:
-    """Raises 402 if tenant has no active subscription (plan == 'none'). Superadmin bypasses."""
+    """Raises 402/403 if tenant has no active subscription. Superadmin bypasses."""
+    if current_user.role == "superadmin":
+        return current_user
+
+    if current_user.role == "pending":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "SETUP_REQUIRED",
+                "message": "Debes completar la configuración de tu cuenta.",
+            },
+        )
+    
     if current_user.tenant_id is None:
-        return current_user  # superadmin always passes
+        return current_user  # fallback cases
+        
     if not current_user.tenant or current_user.tenant.plan == "none":
         raise HTTPException(
             status_code=402,
@@ -90,6 +103,18 @@ async def require_suscripcion_activa(
                 "message": "Tu lavandería no tiene una suscripción activa.",
                 "plan_actual": "none",
             },
+        )
+    return current_user
+
+
+async def require_pending(
+    current_user: AppUser = Depends(get_current_user),
+) -> AppUser:
+    """Lanza HTTPException 400 si el usuario ya completó el setup."""
+    if current_user.role != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El setup ya fue completado",
         )
     return current_user
 

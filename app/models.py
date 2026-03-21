@@ -9,7 +9,7 @@ class Tenant(Base):
     __tablename__ = "tenants"
 
     id = Column(Integer, primary_key=True, index=True)
-    nombre = Column(String(100), nullable=False)
+    nombre = Column(String(100), nullable=False, unique=True)
     ciudad = Column(String(100), nullable=True)
     plan = Column(String(50), default="none", nullable=False)  # "none" | "basic" | "premium"
     is_active = Column(Boolean, default=True, nullable=False)
@@ -35,11 +35,11 @@ class AppUser(Base):
     __tablename__ = "app_users"
 
     id = Column(Integer, primary_key=True, index=True)
-    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=True)  # null para superadmin
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=True)  # null para superadmin y pending
     email = Column(String(150), unique=True, nullable=False, index=True)
     username = Column(String(100), nullable=False)
     password_hash = Column(String(255), nullable=False)
-    role = Column(String(20), nullable=False)  # "superadmin" | "admin" | "empleado"
+    role = Column(String(20), nullable=False)  # "superadmin" | "admin" | "empleado" | "pending"
     cedula = Column(String(20), nullable=True)
     last_login = Column(DateTime, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
@@ -47,6 +47,20 @@ class AppUser(Base):
 
     # Relación
     tenant = relationship("Tenant", back_populates="usuarios")
+    join_requests = relationship("EmployeeJoinRequest", back_populates="user")
+
+
+class EmployeeJoinRequest(Base):
+    __tablename__ = "employee_join_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("app_users.id"), nullable=False)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False)
+    status = Column(String(20), default="pending", nullable=False)  # "pending" | "approved" | "rejected"
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    user = relationship("AppUser", back_populates="join_requests")
+    tenant = relationship("Tenant")
 
 
 class Service(Base):

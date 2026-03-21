@@ -10,6 +10,7 @@ import {
   toggleAppUserActivo,
   deleteAppUser,
 } from '../../services/appUsers';
+import { getJoinRequests, approveJoinRequest, rejectJoinRequest } from '../../services/joinRequests';
 
 /* ── Helpers ────────────────────────────────────────────────── */
 function getCurrentUser() {
@@ -415,6 +416,9 @@ export default function UsuariosApp({ user, onNavigate }) {
   const [removingId, setRemovingId]               = useState(null);
   const [toasts, setToasts]                       = useState([]);
   const [networkError, setNetworkError]           = useState(null);
+  const [joinRequests, setJoinRequests]           = useState([]);
+  const [joinRequestsLoading, setJoinRequestsLoading] = useState(false);
+  const [processingReqId, setProcessingReqId]     = useState(null);
 
   const searchTimer = useRef(null);
   const toastTimers = useRef({});
@@ -458,10 +462,23 @@ export default function UsuariosApp({ user, onNavigate }) {
     }
   }, [filters]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const fetchJoinRequests = useCallback(async () => {
+    setJoinRequestsLoading(true);
+    try {
+      const data = await getJoinRequests();
+      setJoinRequests(Array.isArray(data) ? data : []);
+    } catch {
+      /* silencioso */
+    } finally {
+      setJoinRequestsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (currentRole === 'empleado') return;
     fetchStats();
     fetchUsers();
+    fetchJoinRequests();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -522,6 +539,34 @@ export default function UsuariosApp({ user, onNavigate }) {
         addToast(err.message, 'error', '❌');
       }
     }, 200);
+  };
+
+  const handleApproveRequest = async (id) => {
+    setProcessingReqId(id);
+    try {
+      await approveJoinRequest(id);
+      setJoinRequests(prev => prev.filter(r => r.id !== id));
+      addToast('Empleado aprobado exitosamente', 'success', '✅');
+      fetchUsers();
+      fetchStats();
+    } catch (err) {
+      addToast(err.message, 'error', '❌');
+    } finally {
+      setProcessingReqId(null);
+    }
+  };
+
+  const handleRejectRequest = async (id) => {
+    setProcessingReqId(id);
+    try {
+      await rejectJoinRequest(id);
+      setJoinRequests(prev => prev.filter(r => r.id !== id));
+      addToast('Solicitud rechazada', 'success', '🔒');
+    } catch (err) {
+      addToast(err.message, 'error', '❌');
+    } finally {
+      setProcessingReqId(null);
+    }
   };
 
   // ── Derived values ───────────────────────────────────────────
@@ -648,6 +693,54 @@ export default function UsuariosApp({ user, onNavigate }) {
           </div>
         </div>
       </div>
+
+      {/* Join Requests */}
+      {(joinRequests.length > 0 || joinRequestsLoading) && (
+        <div className="ua-join-requests">
+          <div className="ua-join-requests__header">
+            <span className="ua-join-requests__title">
+              Solicitudes de empleados
+              {joinRequests.length > 0 && (
+                <span className="ua-join-requests__badge">{joinRequests.length}</span>
+              )}
+            </span>
+            <span className="ua-join-requests__sub">Personas que quieren unirse a tu negocio</span>
+          </div>
+          {joinRequestsLoading ? (
+            <div className="ua-join-requests__loading">Cargando solicitudes…</div>
+          ) : (
+            <div className="ua-join-requests__list">
+              {joinRequests.map(req => (
+                <div key={req.id} className="ua-join-request-row">
+                  <div className="ua-avatar" style={{ background: '#9C27B0', flexShrink: 0 }}>
+                    {(req.username ?? '?').slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="ua-join-request-row__info">
+                    <div className="ua-join-request-row__name">{req.username ?? '—'}</div>
+                    <div className="ua-join-request-row__email">{req.email ?? '—'}</div>
+                  </div>
+                  <div className="ua-join-request-row__actions">
+                    <button
+                      className="ua-action-btn ua-action-btn--approve"
+                      onClick={() => handleApproveRequest(req.id)}
+                      disabled={processingReqId === req.id}
+                    >
+                      {processingReqId === req.id ? '…' : 'Aprobar'}
+                    </button>
+                    <button
+                      className="ua-action-btn ua-action-btn--cancel"
+                      onClick={() => handleRejectRequest(req.id)}
+                      disabled={processingReqId === req.id}
+                    >
+                      Rechazar
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Network Error */}
       {networkError && (

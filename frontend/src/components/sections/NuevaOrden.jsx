@@ -12,7 +12,7 @@ import {
 import { api } from '../../services/api';
 import PrintInvoice from '../ui/PrintInvoice';
 import { printOrden, buildPrintPayload } from '../../services/print';
-import { sendMessage } from '../../whatsapp';
+import { sendMessage, useWhatsApp } from '../../whatsapp';
 
 /* ── Constants ──────────────────────────────────────────────── */
 const PAYMENT_METHODS = ['Efectivo', 'Nequi', 'Daviplata', 'Transferencia', 'Llave', 'Saldo a Favor'];
@@ -48,8 +48,41 @@ function isAgencyService(name = '') {
 }
 
 /* ── WhatsApp Receipt Builder ───────────────────────────────── */
-function buildWhatsAppReceipt(payload) {
+function buildWhatsAppReceipt(payload, buildMessage) {
   const { negocio, orden } = payload;
+
+  if (buildMessage) {
+    const itemLines = (orden.items || []).map(i => {
+      const price = `$${Math.round(i.vlr_total).toLocaleString('es-CO')}`;
+      return `• ${i.cantidad}x ${i.detalle} ... ${price}`;
+    }).join('\n');
+
+    const totalStr = `$${Math.round(orden.total || 0).toLocaleString('es-CO')}`;
+    const subtotalStr = `$${Math.round(orden.subtotal || 0).toLocaleString('es-CO')}`;
+    const abonoStr = `$${Math.round(orden.abono || 0).toLocaleString('es-CO')}`;
+
+    const estado = (orden.total || 0) <= 0.5
+      ? '✅ *ORDEN PAGADA*'
+      : `⏳ *PENDIENTE: ${totalStr}*`;
+
+    return buildMessage('nueva_orden', {
+      nombre_cliente: orden.cliente,
+      num_orden: orden.numero,
+      fecha: orden.fecha,
+      servicios: itemLines,
+      total: subtotalStr,
+      abono: abonoStr,
+      saldo: totalStr,
+      estado_pago: estado,
+      negocio: (negocio?.nombre || negocio?.nombre_negocio || 'LAVANDERÍA').toUpperCase(),
+      direccion: negocio?.direccion || '',
+      telefono: negocio?.telefono || '',
+      nit: negocio?.nit || '',
+      mensaje_pie: negocio?.mensaje_pie || ''
+    });
+  }
+
+  // Fallback (redundant but safe)
   const biz = (negocio?.nombre || negocio?.nombre_negocio || 'LAVANDERÍA').toUpperCase();
   const tel = negocio?.telefono ? `📞 *Tel:* ${negocio.telefono}` : '';
   const dir = negocio?.direccion ? `📍 *Dir:* ${negocio.direccion}` : '';
@@ -940,6 +973,7 @@ export default function NuevaOrden() {
   const [showConfetti, setShowConfetti]   = useState(false);
   const [toasts, setToasts] = useState([]);
   const [negocioConfig, setNegocioConfig] = useState(null);
+  const { buildMessage } = useWhatsApp();
   const tableTopRef = useRef(null);
   const searchTimer     = useRef(null);
   const toastTimers     = useRef({});
@@ -1225,7 +1259,14 @@ export default function NuevaOrden() {
         description: i.description,
         spent_per_service: i.agency_cost || 0,
       }));
-      const itemsDescription = items.map(i => i.description).filter(Boolean).join(', ');
+      const itemsDescription = items.map(i => {
+        const name = i.service_name || i.name;
+        const qty = i.quantity || i.qty;
+        const val = i.unit_price || i.value;
+        const total = qty * val;
+        const priceStr = `$${Math.round(total).toLocaleString('es-CO')}`;
+        return `${qty}x ${name}${i.description ? ' ('+i.description+')' : ''} ... ${priceStr}`;
+      }).join('\n');
       const discountVal = discountAmt;
 
       let result;
@@ -1282,7 +1323,7 @@ export default function NuevaOrden() {
       // WhatsApp if selected
       if (deliveryWhatsApp && selectedClient?.user_contact) {
         const payload = buildPrintPayload(ordenParaImprimir, negocioConfig, 1);
-        const waMessage = buildWhatsAppReceipt(payload);
+        const waMessage = buildWhatsAppReceipt(payload, buildMessage);
         sendMessage(selectedClient.user_contact, waMessage);
       } else if (deliveryWhatsApp && !selectedClient?.user_contact) {
         addToast('⚠️ El cliente no tiene teléfono registrado para WhatsApp', 'error', '');

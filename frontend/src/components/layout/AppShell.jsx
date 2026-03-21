@@ -40,7 +40,7 @@ const SECTIONS = {
 };
 
 export default function AppShell({ user }) {
-  const [activeSection, setActiveSection] = useState('usuarios');
+  const [activeSection, setActiveSection] = useState('ia-reportes');
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem('washflow_sidebar') === 'collapsed'; } catch { return false; }
   });

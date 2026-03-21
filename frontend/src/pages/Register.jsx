@@ -74,7 +74,7 @@ export default function Register() {
     try {
       await register(name, email, password);
       setSuccess(true);
-      setTimeout(() => navigate('/dashboard'), 1800);
+      setTimeout(() => navigate('/setup'), 1800);
     } catch (err) {
       setError(err.message);
       formRef.current?.classList.remove('shake');
@@ -90,7 +90,7 @@ export default function Register() {
       <div className="auth-success-overlay">
         <div style={{ fontSize: '4rem' }}>🎉</div>
         <h2>¡Cuenta creada!</h2>
-        <p>Redirigiendo a tu dashboard…</p>
+        <p>Configurando tu perfil…</p>
       </div>
     );
   }

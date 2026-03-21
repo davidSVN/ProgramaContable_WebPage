@@ -26,10 +26,10 @@ export async function login(email, password) {
 export async function register(name, email, password) {
   try {
     const data = await api.post('/auth/register', { name, email, password });
-    
+
     setToken(data.access_token);
     localStorage.setItem('washflow_plan', data.plan ?? 'none');
-    localStorage.setItem('washflow_role', data.role ?? '');
+    localStorage.setItem('washflow_role', data.role ?? 'pending');
     return data;
   } catch (err) {
     throw new Error(err.message || 'Error al crear cuenta');

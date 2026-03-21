@@ -1239,3 +1239,94 @@
   .rd-subheader  { flex-direction: column; align-items: flex-start; gap: 12px; }
   .rd-kpi-value  { font-size: 1rem; }
 }
+
+/* ── Custom Deactivation & Search Styles ────────────────────────────────── */
+
+.ia-actions-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ia-deactivate-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid #E8E3D8;
+  background: #fff;
+  color: #888780;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 150ms;
+  font-size: 0.75rem;
+  padding: 0;
+  line-height: 1;
+}
+
+.ia-deactivate-btn:hover {
+  background: #FFEBEE;
+  color: #C62828;
+  border-color: #FFEBEE;
+}
+
+.ia-deactivate-btn-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid #E8E3D8;
+  background: #fff;
+  color: #888780;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 150ms;
+  font-size: 0.875rem;
+  padding: 0;
+  line-height: 1;
+}
+
+.ia-deactivate-btn-icon:hover {
+  background: #FFEBEE;
+  color: #C62828;
+  border-color: #FFEBEE;
+}
+
+.ia-oport-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+}
+
+/* SEARCH STYLES */
+
+.ia-search-box {
+  min-width: 220px;
+}
+
+.ia-card-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ia-search-input {
+  width: 100%;
+  padding: 8px 14px;
+  border: 1px solid #E8E3D8;
+  border-radius: 8px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.8125rem;
+  transition: all 200ms;
+  background: #FDFBF8;
+}
+
+.ia-search-input:focus {
+  outline: none;
+  border-color: #FF6B2B;
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(255, 107, 43, 0.1);
+}

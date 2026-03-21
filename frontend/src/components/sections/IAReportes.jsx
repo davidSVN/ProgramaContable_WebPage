@@ -10,6 +10,7 @@ import {
   getRetencion, getForecastDemanda, getOportunidadesDescuento,
   recalcularML, getPeriodDates, getResumenDia,
 } from '../../services/reportes';
+import { api } from '../../services/api';
 import { useWhatsApp } from '../../whatsapp';
 import './IAReportes.css';
 
@@ -175,7 +176,7 @@ function getBusinessName() {
 
 // ── RiesgoRow ──────────────────────────────────────────────────────────────────
 
-function RiesgoRow({ cliente, onToast, onSendWA }) {
+function RiesgoRow({ cliente, onToast, onSendWA, onDeactivate }) {
   const dias = cliente.dias_sin_visitar ?? 0;
   const pillClass = dias >= 120 ? 'ia-heat-red' : dias >= 90 ? 'ia-heat-orange' : 'ia-heat-amber';
   const ltv = cliente.total_gastado ?? cliente.ltv ?? 0;
@@ -196,9 +197,18 @@ function RiesgoRow({ cliente, onToast, onSendWA }) {
       <td>
         <div className="ia-contact-cell">
           <span className="ia-td-muted">{contact ?? '—'}</span>
-          <button className="ia-wa-btn" onClick={handleWA}>
-            WhatsApp →
-          </button>
+          <div className="ia-actions-cell">
+            <button className="ia-wa-btn" onClick={handleWA} title="Enviar WhatsApp">
+              WhatsApp →
+            </button>
+            <button 
+              className="ia-deactivate-btn" 
+              onClick={() => onDeactivate(cliente.user_id, cliente.nombre ?? cliente.user_name)}
+              title="Marcar como inactivo"
+            >
+              ✕
+            </button>
+          </div>
         </div>
       </td>
     </tr>
@@ -207,7 +217,7 @@ function RiesgoRow({ cliente, onToast, onSendWA }) {
 
 // ── PerfilRow ──────────────────────────────────────────────────────────────────
 
-function PerfilRow({ perfil, segConfig, expanded, onToggle, onToast, onSendWA }) {
+function PerfilRow({ perfil, segConfig, expanded, onToggle, onToast, onSendWA, onDeactivate }) {
   const churn = perfil.riesgo_churn ?? 0;
   const churnColor = churn >= 65 ? '#C62828' : churn >= 35 ? '#F57F17' : '#4CAF50';
   const seg = segConfig[perfil.segmento] ?? { color: '#888780', desc: '' };
@@ -260,9 +270,18 @@ function PerfilRow({ perfil, segConfig, expanded, onToggle, onToast, onSendWA })
         </td>
         <td className="ia-td-bold ia-td-green">{fmtCOP(perfil.ltv_estimado ?? 0)}</td>
         <td>
-          <button className="ia-wa-btn" onClick={handleWA}>
-            WhatsApp →
-          </button>
+          <div className="ia-actions-cell">
+            <button className="ia-wa-btn" onClick={handleWA}>
+              WhatsApp →
+            </button>
+            <button 
+              className="ia-deactivate-btn" 
+              onClick={(e) => { e.stopPropagation(); onDeactivate(perfil.user_id, perfil.nombre ?? perfil.user_name); }}
+              title="Marcar como inactivo"
+            >
+              ✕
+            </button>
+          </div>
         </td>
       </tr>
       {expanded && (
@@ -283,7 +302,7 @@ function PerfilRow({ perfil, segConfig, expanded, onToggle, onToast, onSendWA })
 
 // ── OportunidadCard ────────────────────────────────────────────────────────────
 
-function OportunidadCard({ op, isGestionado, onGestionar, onToast, onSendWA, delay }) {
+function OportunidadCard({ op, isGestionado, onGestionar, onToast, onSendWA, onDeactivate, delay }) {
   const riesgoClass =
     op.nivel_riesgo === 'alto'  ? 'ia-riesgo-alto'  :
     op.nivel_riesgo === 'medio' ? 'ia-riesgo-medio' : 'ia-riesgo-bajo';
@@ -331,6 +350,13 @@ function OportunidadCard({ op, isGestionado, onGestionar, onToast, onSendWA, del
           disabled={isGestionado}
         >
           ✓ Aplicado
+        </button>
+        <button 
+          className="ia-deactivate-btn-icon" 
+          onClick={() => onDeactivate(op.user_id, op.nombre ?? op.user_name)}
+          title="Marcar como inactivo"
+        >
+          ✕
         </button>
       </div>
     </div>
@@ -717,7 +743,7 @@ function ResumenDia({ data, loading, fechaDia, onVolver, onDiaAnterior, onDiaSig
 export default function IAReportes() {
   const { send: sendWA } = useWhatsApp();
   const plan      = localStorage.getItem('washflow_plan') ?? 'basic';
-  const isPremium = plan === 'premium';
+  const isPremium = plan === 'premium' || plan === 'superadmin';
 
   const [periodo, setPeriodo]     = useState('mes');
   const [syncing, setSyncing]     = useState(false);
@@ -756,6 +782,10 @@ export default function IAReportes() {
   const [resumenDia,  setResumenDia]  = useState(null);
   const [loadingDia,  setLoadingDia]  = useState(false);
 
+  const [busquedaRiesgo, setBusquedaRiesgo] = useState('');
+  const [busquedaML,      setBusquedaML]      = useState('');
+
+  // ── Toasts ─────────────────────────────────────────────────────────────────
   const { toasts, add: addToast } = useToast();
 
   // ── Fetch basic ────────────────────────────────────────────────────────────
@@ -858,10 +888,31 @@ export default function IAReportes() {
     }
   };
 
+  const handleDeactivate = async (userId, userName) => {
+    if (!window.confirm(`¿Seguro que deseas marcar a ${userName} como inactivo? Dejará de aparecer en estos reportes.`)) return;
+    try {
+      await api.put(`/usuarios/${userId}`, { activo: false });
+      addToast('Cliente marcado como inactivo', 'success');
+      // Refrescar datos
+      fetchBasic(periodo);
+      if (isPremium) fetchPremium();
+    } catch (e) {
+      addToast('Error al desactivar cliente', 'error');
+    }
+  };
+
   // ── Derived ────────────────────────────────────────────────────────────────
-  const perfilesFiltrados = segmentoFiltro
-    ? perfiles.filter(p => p.segmento === segmentoFiltro)
-    : perfiles;
+  const perfilesFiltrados = perfiles.filter(p => {
+    const pNom = (p.nombre ?? p.user_name ?? '').toLowerCase();
+    const matchesName = pNom.includes(busquedaML.toLowerCase());
+    const matchesSeg  = segmentoFiltro ? p.segmento === segmentoFiltro : true;
+    return matchesName && matchesSeg;
+  });
+
+  const clientesRiesgoFiltrados = clientesRiesgo.filter(c => {
+    const cNom = (c.nombre ?? c.user_name ?? '').toLowerCase();
+    return cNom.includes(busquedaRiesgo.toLowerCase());
+  });
 
   const donutData = ordenesResumen?.por_estado
     ? Object.entries(ordenesResumen.por_estado).map(([name, value]) => ({ name, value }))
@@ -1093,12 +1144,22 @@ export default function IAReportes() {
         </div>
       </div>
 
-      {/* ── SECCIÓN 3: CLIENTES EN RIESGO ────────────────────────────── */}
+      {/* ── SECCIÓN 3: CLIENTES EN RIESGO (PREMIUM) ──────────────────── */}
+      <PremiumGate isPremium={isPremium}>
       <div className="ia-card ia-reveal" style={{ animationDelay: '200ms' }}>
         <div className="ia-card-header">
           <div>
             <div className="ia-card-title">⚠️ Clientes en Riesgo de Abandono</div>
             <div className="ia-card-sub">Clientes sin actividad en +60 días</div>
+          </div>
+          <div className="ia-search-box">
+            <input 
+              type="text" 
+              className="ia-search-input" 
+              placeholder="Buscar cliente..." 
+              value={busquedaRiesgo}
+              onChange={(e) => setBusquedaRiesgo(e.target.value)}
+            />
           </div>
         </div>
 
@@ -1125,21 +1186,30 @@ export default function IAReportes() {
                   </tr>
                 </thead>
                 <tbody>
-                  {clientesRiesgo.slice(0, 10).map((c, i) => (
-                    <RiesgoRow key={c.user_id ?? i} cliente={c} onToast={addToast} onSendWA={sendWA} />
+                  {clientesRiesgoFiltrados.slice(0, 10).map((c, i) => (
+                    <RiesgoRow 
+                      key={c.user_id ?? i} 
+                      cliente={c} 
+                      onToast={addToast} 
+                      onSendWA={sendWA}
+                      onDeactivate={handleDeactivate} 
+                    />
                   ))}
                 </tbody>
               </table>
             </div>
-            {clientesRiesgo.length > 10 && (
-              <div className="ia-ver-todos">
-                {clientesRiesgo.length - 10} más ·{' '}
+            <div className="ia-ver-todos">
+                {clientesRiesgoFiltrados.length > 10 && (
+                  <>
+                    {clientesRiesgoFiltrados.length - 10} más ·{' '}
+                  </>
+                )}
                 <span className="ia-link">Ver todos →</span>
               </div>
-            )}
           </>
         )}
       </div>
+      </PremiumGate>
 
       {/* ── SECCIÓN 4: INTELIGENCIA ML (PREMIUM) ─────────────────────── */}
       <PremiumGate isPremium={isPremium}>
@@ -1180,11 +1250,20 @@ export default function IAReportes() {
           <div className="ia-card" style={{ marginBottom: 16 }}>
             <div className="ia-card-header">
               <div className="ia-card-title">👥 Perfiles de Clientes ML</div>
-              {segmentoFiltro && (
-                <button className="ia-chip-clear" onClick={() => setSegmentoFiltro(null)}>
-                  {segmentoFiltro} ✕
-                </button>
-              )}
+              <div className="ia-card-header-actions">
+                <input 
+                  type="text" 
+                  className="ia-search-input" 
+                  placeholder="Filtrar por nombre..." 
+                  value={busquedaML}
+                  onChange={(e) => setBusquedaML(e.target.value)}
+                />
+                {segmentoFiltro && (
+                  <button className="ia-chip-clear" onClick={() => setSegmentoFiltro(null)}>
+                    {segmentoFiltro} ✕
+                  </button>
+                )}
+              </div>
             </div>
             {loadML ? (
               <div className="ia-skel-rows">
@@ -1222,6 +1301,7 @@ export default function IAReportes() {
                           onToggle={() => setExpandedPerfil(expandedPerfil === id ? null : id)}
                           onToast={addToast}
                           onSendWA={sendWA}
+                          onDeactivate={handleDeactivate}
                         />
                       );
                     })}
@@ -1354,6 +1434,7 @@ export default function IAReportes() {
                   onGestionar={() => setGestionados(p => new Set([...p, op.user_id ?? i]))}
                   onToast={addToast}
                   onSendWA={sendWA}
+                  onDeactivate={handleDeactivate}
                   delay={i * 80}
                 />
               ))}

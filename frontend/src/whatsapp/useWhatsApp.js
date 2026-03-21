@@ -45,7 +45,10 @@ export function useWhatsApp() {
     const tpl = templates[templateId]
     if (!tpl) return ''
     const text = tpl.custom || tpl.default
-    return text.replace(/\{\{(\w+)\}\}/g, (_, key) => variables[key] || `[${key}]`)
+    return text.replace(/\{\{(\w+)\}\}/g, (_, key) => {
+      const val = variables[key];
+      return (val !== undefined && val !== null) ? val : `[${key}]`;
+    });
   }, [templates])
 
   const send = useCallback((phone, templateId, variables = {}) => {
