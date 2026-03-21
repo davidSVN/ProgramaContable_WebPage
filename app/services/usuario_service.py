@@ -386,7 +386,7 @@ async def actualizar(
     try:
         await db.commit()
         await db.refresh(usuario)
-        return True
+        return await obtener(db, tenant_id, usuario.user_id)
     except IntegrityError:
         await db.rollback()
         return "Error de integridad al actualizar el usuario."
