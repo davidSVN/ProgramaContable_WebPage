@@ -307,8 +307,13 @@ async def crear(
         await db.commit()
         await db.refresh(nuevo)
         return await obtener(db, tenant_id, nuevo.user_id)
-    except IntegrityError:
+    except IntegrityError as e:
         await db.rollback()
+        msg = str(e).lower()
+        if "user_name" in msg:
+            return "Ya existe un usuario con ese nombre en este negocio."
+        if "user_contact" in msg:
+            return "Ese número de contacto ya está registrado para otro usuario."
         return "Ya existe un usuario con ese nombre o contacto."
     except Exception as exc:
         await db.rollback()

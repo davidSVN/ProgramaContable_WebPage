@@ -219,7 +219,7 @@ class ServicioStatsResponse(BaseModel):
 class UsuarioCreate(BaseModel):
     nombre: str
     email: Optional[str] = None
-    contacto: str = Field(pattern=r'^\d{10}$')
+    contacto: str = Field(min_length=2, max_length=100)
     nit: Optional[str] = None
     direccion: Optional[str] = None
     user_type: str = "B2C"
@@ -231,7 +231,7 @@ class UsuarioCreate(BaseModel):
 class UsuarioUpdate(BaseModel):
     nombre: Optional[str] = None
     email: Optional[str] = None
-    contacto: Optional[str] = Field(default=None, pattern=r'^\d{10}$')
+    contacto: Optional[str] = Field(default=None, min_length=2, max_length=100)
     nit: Optional[str] = None
     direccion: Optional[str] = None
     user_type: Optional[str] = None
