@@ -149,7 +149,7 @@ async def crear_usuario(
     return result
 
 # 6. PUT /usuarios/{usuario_id}
-@router.put("/{usuario_id}")
+@router.put("/{usuario_id}", response_model=UsuarioResponse)
 async def actualizar_usuario(
     usuario_id: int,
     data: UsuarioUpdate,
@@ -166,7 +166,7 @@ async def actualizar_usuario(
     if isinstance(result, str):
         raise HTTPException(status_code=400, detail=result)
         
-    return {"message": "Cliente actualizado correctamente"}
+    return result
 
 # 7. DELETE /usuarios/{usuario_id}
 @router.delete("/{usuario_id}")
