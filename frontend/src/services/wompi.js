@@ -6,12 +6,14 @@ import { api } from './api';
  */
 export const PLAN_PRICES = {
   basic: {
-    monthly: { amount: 49900, label: '$49.900/mes' },
-    yearly:  { amount: 479000, label: '$479.000/año', savings: 'Ahorras 2 meses' },
+    monthly: { amount: 69900,  label: '$69.900/mes' },
+    yearly:  { amount: 768000, label: '$768.000/año', savings: 'Ahorras 2 meses' },
+    trial:   { amount: 34950,  label: '$34.950', originalLabel: '$69.900/mes', savings: '50% de descuento por 7 días' },
   },
   premium: {
-    monthly: { amount: 89900, label: '$89.900/mes' },
-    yearly:  { amount: 862000, label: '$862.000/año', savings: 'Ahorras 2 meses' },
+    monthly: { amount: 94900,   label: '$94.900/mes' },
+    yearly:  { amount: 1043900, label: '$1.043.900/año', savings: 'Ahorras 2 meses' },
+    trial:   { amount: 47450,   label: '$47.450', originalLabel: '$94.900/mes', savings: '50% de descuento por 7 días' },
   },
 };
 

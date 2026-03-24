@@ -36,6 +36,13 @@ function PlanModal({ currentPlan, onClose, onChanged }) {
   const [loading, setLoading] = useState(null);
   const [toast, setToast] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState('monthly');
+  const [usedTrial, setUsedTrial] = useState(true); // default true hasta verificar
+
+  useEffect(() => {
+    api.get('/wompi/subscription-status')
+      .then(data => { setUsedTrial(data.has_used_trial || false); })
+      .catch(() => {});
+  }, []);
 
   const showToast = (msg, ok = true) => {
     setToast({ msg, ok });
@@ -43,7 +50,7 @@ function PlanModal({ currentPlan, onClose, onChanged }) {
   };
 
   const handleSelect = async (plan) => {
-    if (plan === currentPlan) {
+    if (plan === currentPlan && selectedPeriod !== 'trial') {
       showToast('Ya tienes este plan', false);
       return;
     }
@@ -120,6 +127,27 @@ function PlanModal({ currentPlan, onClose, onChanged }) {
               -17%
             </span>
           </button>
+          {!usedTrial && (
+            <button
+              onClick={() => setSelectedPeriod('trial')}
+              style={{
+                padding: '8px 20px', border: 'none', borderRadius: '6px',
+                cursor: 'pointer', fontFamily: 'DM Sans', fontSize: '14px', fontWeight: 600,
+                background: selectedPeriod === 'trial' ? '#FF6B2B' : 'transparent',
+                color: selectedPeriod === 'trial' ? '#fff' : '#6B6B6B',
+                transition: 'all 0.2s',
+              }}
+            >
+              Trial 7 días
+              <span style={{
+                marginLeft: '6px', fontSize: '11px', padding: '2px 6px',
+                background: '#FF6B2B', color: '#fff', borderRadius: '4px',
+                opacity: selectedPeriod === 'trial' ? 0.8 : 1,
+              }}>
+                -50%
+              </span>
+            </button>
+          )}
         </div>
 
         <div className="ab-modal-plans">
@@ -127,11 +155,25 @@ function PlanModal({ currentPlan, onClose, onChanged }) {
           <div className={`ab-modal-plan ${currentPlan === 'basic' ? 'ab-modal-plan--current' : ''}`}>
             {currentPlan === 'basic' && <span className="ab-modal-current-badge">Plan actual</span>}
             <h3 className="ab-modal-plan__name">Basic</h3>
-            <p className="ab-modal-plan__price">{getPrice('basic').label}</p>
-            {selectedPeriod === 'yearly' && getPrice('basic').savings && (
-              <p style={{ fontSize: '12px', color: '#38A169', marginTop: '-8px', marginBottom: '8px' }}>
-                {getPrice('basic').savings}
-              </p>
+            {selectedPeriod === 'trial' ? (
+              <>
+                <p className="ab-modal-plan__price">{getPrice('basic').label}</p>
+                <p style={{ fontSize: '12px', color: '#6B6B6B', marginTop: '-8px', marginBottom: '4px' }}>
+                  por 7 días — luego <s style={{ color: '#9E9E9E' }}>{getPrice('basic').originalLabel}</s> <strong>$69.900/mes</strong>
+                </p>
+                <p style={{ fontSize: '12px', color: '#FF6B2B', fontWeight: 600, marginBottom: '8px' }}>
+                  {getPrice('basic').savings}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="ab-modal-plan__price">{getPrice('basic').label}</p>
+                {selectedPeriod === 'yearly' && getPrice('basic').savings && (
+                  <p style={{ fontSize: '12px', color: '#38A169', marginTop: '-8px', marginBottom: '8px' }}>
+                    {getPrice('basic').savings}
+                  </p>
+                )}
+              </>
             )}
             <ul className="ab-modal-plan__features">
               {BASIC_FEATURES.map(f => <li key={f}><span>✓</span>{f}</li>)}
@@ -143,6 +185,8 @@ function PlanModal({ currentPlan, onClose, onChanged }) {
             >
               {loading === 'basic' ? (
                 <><span className="ab-save-spinner" /> Redirigiendo a pago...</>
+              ) : selectedPeriod === 'trial' ? (
+                'Probar 7 días al 50% →'
               ) : (
                 'Pagar Basic →'
               )}
@@ -153,11 +197,25 @@ function PlanModal({ currentPlan, onClose, onChanged }) {
           <div className={`ab-modal-plan ab-modal-plan--premium ${currentPlan === 'premium' ? 'ab-modal-plan--current' : ''}`}>
             {currentPlan === 'premium' && <span className="ab-modal-current-badge ab-modal-current-badge--premium">Plan actual</span>}
             <h3 className="ab-modal-plan__name ab-modal-plan__name--premium">Premium</h3>
-            <p className="ab-modal-plan__price">{getPrice('premium').label}</p>
-            {selectedPeriod === 'yearly' && getPrice('premium').savings && (
-              <p style={{ fontSize: '12px', color: '#38A169', marginTop: '-8px', marginBottom: '8px' }}>
-                {getPrice('premium').savings}
-              </p>
+            {selectedPeriod === 'trial' ? (
+              <>
+                <p className="ab-modal-plan__price">{getPrice('premium').label}</p>
+                <p style={{ fontSize: '12px', color: '#6B6B6B', marginTop: '-8px', marginBottom: '4px' }}>
+                  por 7 días — luego <s style={{ color: '#9E9E9E' }}>{getPrice('premium').originalLabel}</s> <strong>$94.900/mes</strong>
+                </p>
+                <p style={{ fontSize: '12px', color: '#FF6B2B', fontWeight: 600, marginBottom: '8px' }}>
+                  {getPrice('premium').savings}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="ab-modal-plan__price">{getPrice('premium').label}</p>
+                {selectedPeriod === 'yearly' && getPrice('premium').savings && (
+                  <p style={{ fontSize: '12px', color: '#38A169', marginTop: '-8px', marginBottom: '8px' }}>
+                    {getPrice('premium').savings}
+                  </p>
+                )}
+              </>
             )}
             <ul className="ab-modal-plan__features ab-modal-plan__features--premium">
               {PREMIUM_FEATURES.map(f => <li key={f}><span>✓</span>{f}</li>)}
@@ -169,6 +227,8 @@ function PlanModal({ currentPlan, onClose, onChanged }) {
             >
               {loading === 'premium' ? (
                 <><span className="ab-save-spinner" /> Redirigiendo a pago...</>
+              ) : selectedPeriod === 'trial' ? (
+                'Probar 7 días al 50% →'
               ) : (
                 'Pagar Premium →'
               )}

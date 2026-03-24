@@ -26,8 +26,8 @@ const PREMIUM_FEATURES = [
 ]
 
 const PRICES = {
-  basic:   { monthly: '$49.900/mes',  yearly: '$479.000/año', savings: '2 meses gratis' },
-  premium: { monthly: '$89.900/mes',  yearly: '$862.000/año', savings: '2 meses gratis' },
+  basic:   { monthly: '$69.900/mes', yearly: '$768.000/año',    trial: '$34.950',  trialOriginal: '$69.900/mes', savings: 'Ahorras 2 meses' },
+  premium: { monthly: '$94.900/mes', yearly: '$1.043.900/año',  trial: '$47.450',  trialOriginal: '$94.900/mes', savings: 'Ahorras 2 meses' },
 }
 
 export default function Landing() {
@@ -111,6 +111,10 @@ export default function Landing() {
               className={`pricing__period-btn ${period==='yearly'?'active':''}`}
               onClick={() => setPeriod('yearly')}
             >Anual <span className="pricing__savings-badge">-17%</span></button>
+            <button
+              className={`pricing__period-btn ${period==='trial'?'active':''}`}
+              onClick={() => setPeriod('trial')}
+            >Trial 7 días <span className="pricing__savings-badge" style={{background:'#FF6B2B'}}>-50%</span></button>
           </div>
 
           <div className="pricing__cards">
@@ -118,12 +122,22 @@ export default function Landing() {
             <div className="pricing__card">
               <div className="pricing__card-header">
                 <h3 className="pricing__plan-name">Basic</h3>
-                <div className="pricing__price">{PRICES.basic[period].split('/')[0]}</div>
-                <div className="pricing__period-label">
-                  /{period === 'monthly' ? 'mes' : 'año'}
-                </div>
-                {period === 'yearly' && (
-                  <div className="pricing__plan-savings">{PRICES.basic.yearly.savings}</div>
+                {period === 'trial' ? (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', justifyContent: 'center' }}>
+                      <div className="pricing__price">{PRICES.basic.trial}</div>
+                    </div>
+                    <div className="pricing__period-label">por 7 días</div>
+                    <div style={{ fontSize: '13px', color: '#6B6B6B', marginTop: '4px' }}>
+                      Después <s style={{ color: '#9E9E9E' }}>{PRICES.basic.trialOriginal}</s> <strong>$69.900/mes</strong>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="pricing__price">{PRICES.basic[period].split('/')[0]}</div>
+                    <div className="pricing__period-label">/{period === 'monthly' ? 'mes' : 'año'}</div>
+                    {period === 'yearly' && <div className="pricing__plan-savings">{PRICES.basic.savings}</div>}
+                  </>
                 )}
               </div>
               <ul className="pricing__features">
@@ -134,7 +148,7 @@ export default function Landing() {
                 ))}
               </ul>
               <Link to="/register" className="pricing__cta pricing__cta--basic">
-                Empezar con Basic →
+                {period === 'trial' ? 'Probar 7 días al 50% →' : 'Empezar con Basic →'}
               </Link>
             </div>
 
@@ -142,12 +156,22 @@ export default function Landing() {
               <div className="pricing__badge">⭐ Más popular</div>
               <div className="pricing__card-header">
                 <h3 className="pricing__plan-name pricing__plan-name--premium">Premium</h3>
-                <div className="pricing__price">{PRICES.premium[period].split('/')[0]}</div>
-                <div className="pricing__period-label">
-                  /{period === 'monthly' ? 'mes' : 'año'}
-                </div>
-                {period === 'yearly' && (
-                  <div className="pricing__plan-savings">{PRICES.premium.yearly.savings}</div>
+                {period === 'trial' ? (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', justifyContent: 'center' }}>
+                      <div className="pricing__price">{PRICES.premium.trial}</div>
+                    </div>
+                    <div className="pricing__period-label">por 7 días</div>
+                    <div style={{ fontSize: '13px', color: '#6B6B6B', marginTop: '4px' }}>
+                      Después <s style={{ color: '#9E9E9E' }}>{PRICES.premium.trialOriginal}</s> <strong>$94.900/mes</strong>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="pricing__price">{PRICES.premium[period].split('/')[0]}</div>
+                    <div className="pricing__period-label">/{period === 'monthly' ? 'mes' : 'año'}</div>
+                    {period === 'yearly' && <div className="pricing__plan-savings">{PRICES.premium.savings}</div>}
+                  </>
                 )}
               </div>
               <ul className="pricing__features">
@@ -158,7 +182,7 @@ export default function Landing() {
                 ))}
               </ul>
               <Link to="/register" className="pricing__cta pricing__cta--premium">
-                Empezar con Premium →
+                {period === 'trial' ? 'Probar 7 días al 50% →' : 'Empezar con Premium →'}
               </Link>
             </div>
 
