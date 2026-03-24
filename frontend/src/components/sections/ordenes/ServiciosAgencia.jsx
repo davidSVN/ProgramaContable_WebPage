@@ -434,7 +434,7 @@ export default function ServiciosAgencia({ user, onNavigate }) {
                   <tr key={s.id} className="sa-row sa-row--pagada">
                     <td className="sa-td sa-td--date">{fmtDate(s.date)}</td>
                     <td className="sa-td sa-td--id">
-                      <span className="sa-order-id">#{s.order_id}</span>
+                      <span className="sa-order-id">#{s.order_number ?? s.order_id}</span>
                     </td>
                     <td className="sa-td">
                       <span className="sa-client-name">{s.customer_name || '—'}</span>

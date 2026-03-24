@@ -428,7 +428,7 @@ export default function HistorialOrdenes({ user, onNavigate }) {
       }
     } catch (e) {}
 
-    const message = `Hola ${order.user_name}, te saludamos de ${businessName}. Te contactamos por la orden #${order.id} (${order.order_status}).`;
+    const message = `Hola ${order.user_name}, te saludamos de ${businessName}. Te contactamos por la orden #${order.order_number ?? order.id} (${order.order_status}).`;
 
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
@@ -585,7 +585,7 @@ export default function HistorialOrdenes({ user, onNavigate }) {
 
   const selectDeliveryOrder = (order) => {
     setSelectedDeliveryOrder(order);
-    setDeliverySearch(`Orden #${order.id} — ${order.user_name} ✅`);
+    setDeliverySearch(`Orden #${order.order_number ?? order.id} — ${order.user_name} ✅`);
     setDeliveryResultsVisible(false);
     setDeliveryEstadoPago(order.estado_pago === 'Pagada' ? 'Pagada' : 'Pagada'); // Default to Pagada for delivery
     setHighlightedDeliveryIdx(0);
@@ -866,8 +866,8 @@ export default function HistorialOrdenes({ user, onNavigate }) {
           <thead>
             <tr>
               <th className="ho-th ho-th--actions">Acciones</th>
-              <th className="ho-th ho-th--id ho-th--sortable" onClick={() => handleSort('id')}>
-                ID <SortIcon field="id" />
+              <th className="ho-th ho-th--id ho-th--sortable" onClick={() => handleSort('order_number')}>
+                # Orden <SortIcon field="order_number" />
               </th>
               <th className="ho-th">Factura Global</th>
               <th className="ho-th">Creación</th>
@@ -878,10 +878,11 @@ export default function HistorialOrdenes({ user, onNavigate }) {
                 Nombre / Institución <SortIcon field="user_name" />
               </th>
               <th className="ho-th">Contacto</th>
-              <th className="ho-th ho-th--num">Total</th>
+              <th className="ho-th ho-th--num">Subtotal</th>
+              <th className="ho-th ho-th--num">Descuento</th>
+              <th className="ho-th ho-th--num">Total Cliente</th>
               <th className="ho-th ho-th--num">Abonos</th>
               <th className="ho-th ho-th--num">Restante</th>
-              <th className="ho-th ho-th--num">Descuento</th>
               <th className="ho-th ho-th--num">Costo Agencia</th>
               <th className="ho-th ho-th--num">Ingreso Neto</th>
               <th className="ho-th ho-th--desc">Descripción</th>
@@ -947,7 +948,7 @@ export default function HistorialOrdenes({ user, onNavigate }) {
                       )}
                     </div>
                   </td>
-                  <td className="ho-td ho-td--id">#{o.id}</td>
+                  <td className="ho-td ho-td--id">#{o.order_number ?? o.id}</td>
                   <td className="ho-td">
                     {o.consolidated_invoice_id
                       ? <span className="ho-invoice-link">F-{o.consolidated_invoice_id}</span>
@@ -968,12 +969,13 @@ export default function HistorialOrdenes({ user, onNavigate }) {
                     <span className="ho-client-name">{o.user_name}</span>
                   </td>
                   <td className="ho-td ho-td--contact">{o.user_contact || '—'}</td>
+                  <td className="ho-td ho-td--num">{fmtCOP(o.subtotal)}</td>
+                  <td className="ho-td ho-td--num ho-td--muted">{fmtCOP(o.discount)}</td>
                   <td className="ho-td ho-td--num ho-td--bold">{fmtCOP(o.total_amount)}</td>
                   <td className="ho-td ho-td--num ho-td--green">{fmtCOP(o.total_paid)}</td>
                   <td className={`ho-td ho-td--num ${o.balance_due > 0 ? 'ho-td--debt' : ''}`}>
                     {fmtCOP(o.balance_due)}
                   </td>
-                  <td className="ho-td ho-td--num ho-td--muted">{fmtCOP(o.discount)}</td>
                   <td className="ho-td ho-td--num ho-td--red">{fmtCOP(o.agency_cost)}</td>
                   <td className="ho-td ho-td--num ho-td--net">{fmtCOP(o.net_income_value)}</td>
                   <td className="ho-td ho-td--desc" title={o.items_description}>
@@ -1049,7 +1051,7 @@ export default function HistorialOrdenes({ user, onNavigate }) {
           >
             <div className="ho-drawer-header">
               <div>
-                <h2 className="ho-drawer-title">Orden #{drawerOrder.id}</h2>
+                <h2 className="ho-drawer-title">Orden #{drawerOrder.order_number ?? drawerOrder.id}</h2>
                 <p className="ho-drawer-date">{fmtDate(drawerOrder.date)}</p>
               </div>
               <button className="ho-drawer-close" onClick={closeDrawer}>✕</button>
@@ -1135,7 +1137,7 @@ export default function HistorialOrdenes({ user, onNavigate }) {
           <div className="ho-modal ho-modal--edit" onClick={e => e.stopPropagation()}>
             <div className="ho-modal-header">
               <div>
-                <h3 className="ho-modal-title">Editar Orden #{editOrder.id}</h3>
+                <h3 className="ho-modal-title">Editar Orden #{editOrder.order_number ?? editOrder.id}</h3>
                 <p className="ho-modal-sub">{editOrder.user_name}</p>
               </div>
               <button
@@ -1382,7 +1384,7 @@ export default function HistorialOrdenes({ user, onNavigate }) {
               {selectedDeliveryOrder && (
                 <div className="ho-entregar-order-card">
                   <div className="ho-eoc-header">
-                    <span className="ho-eoc-id">Orden #{selectedDeliveryOrder.id}</span>
+                    <span className="ho-eoc-id">Orden #{selectedDeliveryOrder.order_number ?? selectedDeliveryOrder.id}</span>
                     <div className="ho-eoc-badges">
                       <Badge value={selectedDeliveryOrder.order_status} cfg={ORDEN_CFG} />
                       <Badge value={selectedDeliveryOrder.estado_pago}  cfg={PAGO_CFG} />

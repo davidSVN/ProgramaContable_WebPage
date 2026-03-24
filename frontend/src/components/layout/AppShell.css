@@ -173,15 +173,21 @@
   border: 1px solid rgba(255,107,43,0.3);
   margin-top: 4px;
   margin-bottom: 4px;
+  background: var(--ds-accent);
+  color: #000;
+  font-weight: 700;
 }
 
 .nav-item.nueva-orden:hover {
   border-color: var(--ds-accent);
-  background: rgba(255,107,43,0.1);
+  background: var(--ds-accent-dark);
+  color: #000;
 }
 
 .nav-item.nueva-orden.active {
   border-color: var(--ds-accent);
+  background: var(--ds-accent-dark);
+  color: #000;
 }
 
 /* Nav icon */

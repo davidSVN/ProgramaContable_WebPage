@@ -737,7 +737,7 @@ function InstDrawer({ inst, closing, onClose, onEdit, onInactivate }) {
               ) : (
                 ordenes.map(o => (
                   <tr key={o.order_id}>
-                    <td style={{ color:'var(--ds-text-secondary)', fontSize:'0.75rem' }}>#{o.order_id}</td>
+                    <td style={{ color:'var(--ds-text-secondary)', fontSize:'0.75rem' }}>#{o.order_number ?? o.order_id}</td>
                     <td style={{ fontSize:'0.8rem' }}>{o.state_state}</td>
                     <td style={{ fontWeight:600, fontSize:'0.8rem' }}>{fmtCOP(o.order_value)}</td>
                     <td style={{ color:'var(--ds-text-secondary)', fontSize:'0.75rem' }}>{new Date(o.created_at).toLocaleDateString()}</td>

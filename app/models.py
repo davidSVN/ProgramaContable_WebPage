@@ -125,6 +125,7 @@ class OrderHeader(Base):
     __tablename__ = "orders"
     id = Column(Integer, primary_key=True, index=True)
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
+    order_number = Column(Integer, nullable=True)
     date = Column(DateTime, default=datetime.utcnow, nullable=False)
     order_status = Column(String(50), default="Pendiente", nullable=False)
     is_paid = Column(Boolean, default=False, nullable=False)
@@ -160,6 +161,7 @@ class OrderDetail(Base):
     id = Column(Integer, primary_key=True, index=True)
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
     order_id = Column(Integer, ForeignKey("orders.id"), nullable=False, index=True)
+    order_number = Column(Integer, nullable=True)  # tenant-scoped sequential number
     user_id = Column(Integer, ForeignKey("laundry_users.user_id"))
     user_name = Column(String(150))
     service_name = Column(String(100), nullable=False)
@@ -179,6 +181,7 @@ class OrderPayment(Base):
     id = Column(Integer, primary_key=True, index=True)
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
     order_id = Column(Integer, ForeignKey("orders.id"), nullable=True, index=True)
+    order_number = Column(Integer, nullable=True)  # tenant-scoped sequential number
     consolidated_invoice_id = Column(Integer, ForeignKey("consolidated_invoices.id"), nullable=True, index=True)
     user_id = Column(Integer, ForeignKey("laundry_users.user_id"))
     user_name = Column(String(150))

@@ -391,6 +391,20 @@
   line-height: 1.2;
 }
 
+/* ── Order number badge ────────────────────────────────────────── */
+.opc-order-num {
+  display: inline-block;
+  background: #F5F0E8;
+  color: #1A1A1A;
+  font-family: var(--ds-font-ui, 'Syne', sans-serif);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  letter-spacing: -0.2px;
+  white-space: nowrap;
+}
+
 /* ── Days pill ─────────────────────────────────────────────────── */
 .opc-days-pill {
   display: inline-block;

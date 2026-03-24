@@ -118,9 +118,9 @@ function DonutChart({ data, loading }) {
     );
   }
 
-  const R = 80, CX = 110, CY = 110;
+  const R = 55, CX = 110, CY = 110;
   const CIRC = 2 * Math.PI * R;
-  const GAP = 3;
+  const GAP = 0; // Solid pie shouldn't have gaps
 
   const entries = Object.entries(data || {})
     .filter(([, v]) => v > 0)
@@ -141,9 +141,7 @@ function DonutChart({ data, loading }) {
   let acc = 0;
   const segs = entries.map(([cat, val], idx) => {
     const frac = val / total;
-    // Reduce gap if there are many segments, or remove if only one.
-    const actualGap = entries.length > 1 ? GAP : 0;
-    const dash = Math.max(0, frac * CIRC - actualGap);
+    const dash = Math.max(0, frac * CIRC);
     const off  = CIRC * 0.25 - acc;
     acc += frac * CIRC;
     return { cat, val, dash, off };
@@ -154,7 +152,7 @@ function DonutChart({ data, loading }) {
       <div className={`gn-donut-anim${ready ? ' gn-donut-anim--in' : ''}`}>
         <svg viewBox="0 0 220 220" width={220} height={220} className="gn-donut-svg" aria-label="Gráfico de gastos por categoría">
           {/* Track */}
-          <circle cx={CX} cy={CY} r={R} fill="none" stroke="#EDE9E0" strokeWidth={26} />
+          <circle cx={CX} cy={CY} r={R} fill="none" stroke="#EDE9E0" strokeWidth={110} />
           {/* Segments */}
           {segs.map(({ cat, dash, off }) => (
             <circle
@@ -162,25 +160,28 @@ function DonutChart({ data, loading }) {
               cx={CX} cy={CY} r={R}
               fill="none"
               stroke={catColor(cat)}
-              strokeWidth={hovered === cat ? 32 : 26}
+              strokeWidth={110}
               strokeDasharray={`${dash} ${CIRC}`}
               strokeDashoffset={off}
               style={{
-                opacity: hovered && hovered !== cat ? 0.2 : 1,
-                transition: 'stroke-width 180ms ease, opacity 180ms ease',
+                opacity: hovered && hovered !== cat ? 0.3 : 1,
+                transform: hovered === cat ? 'scale(1.02)' : 'none',
+                transformOrigin: '110px 110px',
+                transition: 'transform 180ms ease, opacity 180ms ease',
                 cursor: 'pointer',
               }}
               onMouseEnter={() => setHovered(cat)}
               onMouseLeave={() => setHovered(null)}
             />
           ))}
-          {/* Center */}
-          <text x={CX} y={CY - 7} textAnchor="middle" className="gn-donut-top">Total</text>
-          <text x={CX} y={CY + 16} textAnchor="middle" className="gn-donut-big">{fmtCOP(total)}</text>
         </svg>
       </div>
 
       <div className="gn-legend">
+        <div className="gn-leg-header" style={{ marginBottom: 12, borderBottom: '1px solid #eee', paddingBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontWeight: 600, color: '#666', fontSize: '0.9rem' }}>Total</span>
+            <span style={{ fontSize: '1.25rem', fontWeight: 700, color: '#222' }}>{fmtCOP(total)}</span>
+        </div>
         {entries.map(([cat, val]) => (
           <div
             key={cat}
@@ -951,7 +952,7 @@ export default function GastosNegocio({ user }) {
                           <td className="gn-td gn-td--date">{fmtDate(g.date)}</td>
                           <td className="gn-td">
                             <span className="gn-agency-ref">
-                              <strong>#{g.order_id}</strong> — {g.customer_name}
+                              <strong>#{g.order_number ?? g.order_id}</strong> — {g.customer_name}
                             </span>
                           </td>
                           <td className="gn-td">

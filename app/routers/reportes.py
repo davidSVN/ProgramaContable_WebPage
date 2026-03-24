@@ -30,6 +30,7 @@ async def _get_orders_df(db: AsyncSession, tenant_id: Optional[int], fecha_inici
     orders = result.scalars().all()
     
     df = pd.DataFrame([{
+        "id": o.id,
         "user_id": o.user_id,
         "user_name": o.user_name,
         "created_at": o.date,
@@ -46,7 +47,7 @@ async def _get_orders_df(db: AsyncSession, tenant_id: Optional[int], fecha_inici
     else:
         # Define columns for empty DF to prevent downstream crashes
         df = pd.DataFrame(columns=[
-            "user_id", "user_name", "created_at", "total_amount", 
+            "id", "user_id", "user_name", "created_at", "total_amount", 
             "net_income_value", "balance_due", "is_paid", 
             "items_description", "order_status"
         ])
@@ -160,8 +161,9 @@ async def reporte_ordenes_resumen(
     
     if orders_df.empty:
         return {
-            "total_ordenes": 0, "total_ingresos": 0, "total_egresos": 0, "income_neto": 0,
-            "ticket_promedio": 0, "ordenes_por_estado": {}
+            "total": 0, "total_ingresos": 0, "total_egresos": 0, "income_neto": 0,
+            "ticket_promedio": 0, "ordenes_debe": 0, "pct_cobrado": 0, "por_estado": {},
+            "ingresos_por_metodo": {}
         }
 
     gastos_df = await _get_gastos_df(db, current_user.tenant_id, fecha_inicio, fecha_fin)
@@ -172,6 +174,23 @@ async def reporte_ordenes_resumen(
     ordenes_debe = len(orders_df[orders_df["is_paid"] == False])
     pct_cobrado = (1 - (orders_df["balance_due"].sum() / orders_df["total_amount"].sum() if orders_df["total_amount"].sum() > 0 else 0)) * 100
     
+    # ── Pagos por método ────────────────────────────────────────────────────────
+    pagos_por_metodo = {}
+    order_ids = orders_df["id"].tolist()
+    if order_ids:
+        res_pagos = await db.execute(
+            select(
+                OrderPayment.payment_method,
+                func.sum(OrderPayment.amount).label("total")
+            ).where(
+                and_(
+                    OrderPayment.tenant_id == current_user.tenant_id,
+                    OrderPayment.order_id.in_(order_ids),
+                )
+            ).group_by(OrderPayment.payment_method)
+        )
+        pagos_por_metodo = {row.payment_method: float(row.total or 0) for row in res_pagos}
+
     return {
         "total": len(orders_df),
         "total_ingresos": float(ingresos),
@@ -180,7 +199,8 @@ async def reporte_ordenes_resumen(
         "ticket_promedio": float(orders_df["total_amount"].mean()),
         "ordenes_debe": ordenes_debe,
         "pct_cobrado": round(pct_cobrado, 1),
-        "por_estado": orders_df["order_status"].value_counts().to_dict() if "order_status" in orders_df else {}
+        "por_estado": orders_df["order_status"].value_counts().to_dict() if "order_status" in orders_df else {},
+        "ingresos_por_metodo": pagos_por_metodo
     }
 
 @router.get("/clientes-riesgo", summary="Clientes en riesgo (60+ días sin orden)")

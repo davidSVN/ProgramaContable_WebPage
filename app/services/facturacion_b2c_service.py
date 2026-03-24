@@ -296,9 +296,15 @@ async def crear_orden(
             restante = max(0.0, round(order_value - abono_total, 2))
 
         # ── PASO 3: crear OrderHeader ──────────────────────────────────────────
+        from sqlalchemy import select, func
+        max_order_query = select(func.max(OrderHeader.order_number)).where(OrderHeader.tenant_id == tenant_id)
+        max_order = (await db.execute(max_order_query)).scalar() or 0
+        next_order_number = max_order + 1
+
         now_bogota = datetime.now(BOGOTA_TZ).replace(tzinfo=None)
         
         orden = OrderHeader(
+            order_number      = next_order_number,
             tenant_id         = tenant_id,
             user_id           = user_id,
             user_name         = nombre_usuario,
@@ -324,6 +330,7 @@ async def crear_orden(
             detalle = OrderDetail(
                 tenant_id        = tenant_id,
                 order_id         = orden.id,
+                order_number     = next_order_number,
                 user_id          = user_id,
                 user_name        = nombre_usuario,
                 service_name     = s["name"],
@@ -344,6 +351,7 @@ async def crear_orden(
             db.add(OrderPayment(
                 tenant_id      = tenant_id,
                 order_id       = orden.id,
+                order_number   = next_order_number,
                 user_id        = user_id,
                 user_name      = nombre_usuario,
                 payment_method = metodo,
@@ -356,6 +364,7 @@ async def crear_orden(
                     db.add(OrderPayment(
                         tenant_id      = tenant_id,
                         order_id       = orden.id,
+                        order_number   = next_order_number,
                         user_id        = user_id,
                         user_name      = nombre_usuario,
                         payment_method = p["metodo_pago"],
@@ -477,6 +486,7 @@ async def registrar_pago(
         pago = OrderPayment(
             tenant_id      = tenant_id,
             order_id       = orden.id,
+            order_number   = orden.order_number,
             user_id        = orden.user_id,
             user_name      = orden.user_name,
             payment_method = metodo_pago,
