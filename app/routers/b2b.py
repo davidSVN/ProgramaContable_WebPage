@@ -32,6 +32,7 @@ router = APIRouter()
 def _orden_dto_to_response(dto) -> OrdenResponse:
     return OrdenResponse(
         order_id                = dto.order_id,
+        order_number            = dto.order_number,
         user_id                 = dto.user_id,
         user_name               = dto.user_name,
         user_contact            = dto.user_contact,

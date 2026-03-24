@@ -70,9 +70,10 @@ async def obtener_historial(
             func.unaccent(LaundryUser.user_contact).ilike(func.unaccent(unescaped_term))
         ]
         
-        # Try numeric ID search
+        # Try numeric ID or order_number search
         if term.isdigit():
-            conditions.append(OrderHeader.id == int(term))
+            val = int(term)
+            conditions.append(or_(OrderHeader.id == val, OrderHeader.order_number == val))
             
         stmt = stmt.where(or_(*conditions))
 

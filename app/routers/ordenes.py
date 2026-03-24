@@ -578,6 +578,7 @@ def _orden_dto_to_dict(o) -> dict:
     """Convierte OrdenDTO al dict esperado por OrdenResponse."""
     return {
         "order_id":               o.order_id,
+        "order_number":           o.order_number,
         "user_id":                o.user_id,
         "user_name":              o.user_name,
         "user_contact":           o.user_contact,
