@@ -177,7 +177,6 @@ async def crear_orden_b2b(
         now_bogota = datetime.now(BOGOTA_TZ).replace(tzinfo=None)
 
         # PASO 3: crear OrderHeader con is_institute=True
-        from sqlalchemy import select, func
         max_order_query = select(func.max(OrderHeader.order_number)).where(OrderHeader.tenant_id == tenant_id)
         max_order = (await db.execute(max_order_query)).scalar() or 0
         next_order_number = max_order + 1

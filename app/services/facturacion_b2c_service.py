@@ -56,6 +56,7 @@ class ServicioDTO:
 @dataclass
 class OrdenDTO:
     order_id:          int
+    order_number:      Optional[int]
     user_id:           int
     user_name:         str
     user_contact:      str
@@ -104,6 +105,7 @@ class OrdenDTO:
 
         return cls(
             order_id          = o.id,
+            order_number      = o.order_number,
             user_id           = o.user_id,
             user_name         = user_map.get(o.user_id, o.user_name or f"ID {o.user_id}"),
             user_contact      = contact_map.get(o.user_id, "—"),
@@ -241,11 +243,11 @@ async def crear_orden(
             stmt_u = stmt_u.where(LaundryUser.tenant_id == tenant_id)
         
         res_user = await db.execute(stmt_u)
-        usuario = res_user.scalars().first()
-        if not usuario:
+        cliente = res_user.scalars().first()
+        if not cliente:
             return f"Cliente ID {user_id} no encontrado en este tenant."
 
-        nombre_usuario = usuario.user_name
+        nombre_usuario = cliente.user_name
 
         # ── PASO 1: identificar servicios de agencia automáticamente ───────────
         total_spent_per_order = 0.0
@@ -296,7 +298,6 @@ async def crear_orden(
             restante = max(0.0, round(order_value - abono_total, 2))
 
         # ── PASO 3: crear OrderHeader ──────────────────────────────────────────
-        from sqlalchemy import select, func
         max_order_query = select(func.max(OrderHeader.order_number)).where(OrderHeader.tenant_id == tenant_id)
         max_order = (await db.execute(max_order_query)).scalar() or 0
         next_order_number = max_order + 1
@@ -393,8 +394,8 @@ async def crear_orden(
         await db.refresh(orden)
 
         # Construir DTO con los datos del usuario
-        user_map    = {usuario.user_id: usuario.user_name}
-        contact_map = {usuario.user_id: usuario.user_contact or "—"}
+        user_map    = {cliente.user_id: cliente.user_name}
+        contact_map = {cliente.user_id: cliente.user_contact or "—"}
 
         # Recargar con selectinload para evitar Cartesian Product crash
         from sqlalchemy.orm import selectinload

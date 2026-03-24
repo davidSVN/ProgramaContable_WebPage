@@ -1,16 +1,15 @@
-import sqlite3
 
-try:
-    conn = sqlite3.connect('lavalatu_db.sqlite')
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT id, subtotal, discount, total_amount, spent_per_order, net_income_value 
-        FROM orders 
-        ORDER BY id DESC LIMIT 5;
-    """)
-    rows = cursor.fetchall()
-    print("id | subtotal | discount | total_amount | spent_per_order | net_income_value")
-    for r in rows:
-        print(r)
-except Exception as e:
-    print("Error:", e)
+import asyncio
+from sqlalchemy import text
+from app.database import engine
+
+async def check_columns():
+    async with engine.connect() as conn:
+        for table in ["order_details", "order_payments", "orders"]:
+            print(f"Checking {table}...")
+            res = await conn.execute(text(f"SELECT column_name FROM information_schema.columns WHERE table_name = '{table}' AND column_name = 'order_number'"))
+            exists = res.scalar()
+            print(f"  Column 'order_number' exists: {exists is not None}")
+
+if __name__ == "__main__":
+    asyncio.run(check_columns())
