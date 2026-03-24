@@ -8,6 +8,7 @@ import {
   updateServicio,
   deleteServicio,
 } from '../../services/servicios';
+import api from '../../services/api';
 
 /* ── Helpers ─────────────────────────────────────────────── */
 const fmtCOP = (n) => '$' + (Number(n) || 0).toLocaleString('es-CO');
@@ -66,6 +67,10 @@ export default function Servicios() {
   const [editingId, setEditingId] = useState(null);
   const [editValues, setEditValues] = useState({});
   const [editError, setEditError] = useState(null);
+  const [instituciones, setInstituciones] = useState([]);
+  const [institucionFiltro, setInstitucionFiltro] = useState('');
+  const [uploadingCsv, setUploadingCsv] = useState(false);
+  const fileInputRef = useRef(null);
   const [isAddingNew, setIsAddingNew] = useState(false);
   const [newServiceValues, setNewServiceValues] = useState({});
   const [newError, setNewError] = useState(null);
@@ -127,8 +132,69 @@ export default function Servicios() {
   useEffect(() => {
     fetchServices();
     fetchStats();
+    api.get('/usuarios?user_type=B2B&limit=200')
+      .then(res => setInstituciones(Array.isArray(res) ? res : []))
+      .catch(e => console.error('Error fetching instituciones:', e));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+
+  /* ── CSV Upload ──────────────────────────────────────── */
+  const handleCsvUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingCsv(true);
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const fileContent = evt.target.result;
+        const lines = fileContent.split('\n').map(l => l.trim()).filter(Boolean);
+        if (lines.length < 2) throw new Error('El archivo debe tener un encabezado y al menos una fila');
+        
+        let success = 0;
+        let errors = 0;
+        
+        const isB2B = mode === 'instituto';
+        for (let i = 1; i < lines.length; i++) {
+          const cells = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+          if (cells.length < 3) continue;
+          
+          let sName = cells[1];
+          // User said "misma estructura de la tabla de servicios". The table has ID as first column. So Name is cells[1]
+          let sPrice = parseFloat((cells[isB2B ? 3 : 2] || '').replace(/[^0-9.-]+/g, "")) || 0;
+          let sCost = parseFloat((cells[isB2B ? 4 : 3] || '').replace(/[^0-9.-]+/g, "")) || 0;
+          let sInst = isB2B ? cells[2] : null;
+          let sDesc = cells[isB2B ? 6 : 5] || null;
+          
+          if (!sName || sPrice <= 0) { errors++; continue; }
+          
+          const payload = {
+            service_name: sName,
+            service_value: sPrice,
+            spent_per_service: sCost,
+            description: sDesc,
+            user_institute: mode,
+          };
+          if (isB2B && sInst) payload.nombre_instituto = sInst;
+          
+          try {
+            await createServicio(payload);
+            success++;
+          } catch(err) { errors++; }
+        }
+        
+        addToast(`Carga CSV lista: ${success} creados, ${errors} ignorados`, success > 0 ? 'success' : 'error');
+        fetchServices(mode, searchTerm);
+        fetchStats();
+      } catch (err) {
+        addToast(err.message, 'error', '✕');
+      } finally {
+        setUploadingCsv(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+    };
+    reader.readAsText(file);
+  };
 
   /* ── Mode toggle ─────────────────────────────────────── */
   const handleModeToggle = (newMode) => {
@@ -348,6 +414,10 @@ export default function Servicios() {
         </button>
       </div>
 
+      <datalist id="inst-list">
+        {instituciones.map(i => <option key={i.user_id} value={i.user_name} />)}
+      </datalist>
+
       {/* ── Action bar ── */}
       <div className="sv-action-bar">
         <BlockedAction>
@@ -359,6 +429,17 @@ export default function Servicios() {
           + Nuevo Servicio
         </button>
         </BlockedAction>
+        <BlockedAction>
+        <button
+          className="sv-btn sv-btn--primary"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploadingCsv || isAddingNew || editingId !== null}
+          style={{ background: '#2E7D32', borderColor: '#2E7D32' }}
+        >
+          {uploadingCsv ? '⏳...' : '📄 Subir CSV'}
+        </button>
+        <input type="file" accept=".csv" ref={fileInputRef} onChange={handleCsvUpload} style={{ display: 'none' }} />
+        </BlockedAction>
         <div className="sv-search-wrap">
           <span className="sv-search-icon">🔍</span>
           <input
@@ -369,6 +450,19 @@ export default function Servicios() {
             onChange={(e) => handleSearchChange(e.target.value)}
           />
         </div>
+        {mode === 'instituto' && (
+          <div className="sv-search-wrap" style={{ flex: '0 1 230px' }}>
+            <span className="sv-search-icon">🏢</span>
+            <input
+              className="sv-search-input"
+              type="text"
+              list="inst-list"
+              placeholder="Filtrar Institución"
+              value={institucionFiltro}
+              onChange={(e) => setInstitucionFiltro(e.target.value)}
+            />
+          </div>
+        )}
       </div>
 
       {/* ── Network error banner ── */}
@@ -419,6 +513,7 @@ export default function Servicios() {
                     <input
                       className="sv-inline-input"
                       placeholder="Institución"
+                      list="inst-list"
                       value={newServiceValues.nombre_instituto}
                       onChange={(e) => setNewServiceValues((v) => ({ ...v, nombre_instituto: e.target.value }))}
                     />
@@ -493,7 +588,9 @@ export default function Servicios() {
 
             {/* ── Data rows ── */}
             {!loading &&
-              services.map((service) => {
+              services
+                .filter(s => mode !== 'instituto' || !institucionFiltro || s.nombre_instituto?.toLowerCase().includes(institucionFiltro.toLowerCase()))
+                .map((service) => {
                 const isEditing = editingId === service.service_id;
                 const isDeleting = deletingId === service.service_id;
                 const { margin, pct } = isEditing
@@ -527,6 +624,7 @@ export default function Servicios() {
                         {isEditing ? (
                           <input
                             className="sv-inline-input"
+                            list="inst-list"
                             value={editValues.nombre_instituto}
                             onChange={(e) => setEditValues((v) => ({ ...v, nombre_instituto: e.target.value }))}
                           />

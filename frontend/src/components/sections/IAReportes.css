@@ -406,6 +406,10 @@
   gap: 20px;
 }
 
+.ia-ops-grid--3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
 /* ── Mini metrics ─────────────────────────────────────────────────────────── */
 
 .ia-mini-metrics {

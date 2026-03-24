@@ -286,6 +286,7 @@ async def listar_detalles_ordenes(
         sa_select(
             OrderDetail.id,
             OrderDetail.order_id,
+            OrderDetail.order_number,
             OrderDetail.user_name,
             OrderDetail.service_name,
             OrderDetail.quantity,
@@ -297,6 +298,7 @@ async def listar_detalles_ordenes(
             OrderDetail.description,
             OH.date,
             OH.order_status,
+            OH.order_number.label("oh_order_number"),
         )
         .join(OH, OrderDetail.order_id == OH.id)
         .where(OrderDetail.tenant_id == current_user.tenant_id)
@@ -322,6 +324,7 @@ async def listar_detalles_ordenes(
         {
             "id":               r.id,
             "order_id":         r.order_id,
+            "order_number":     r.order_number if r.order_number is not None else r.oh_order_number,
             "user_name":        r.user_name,
             "service_name":     r.service_name,
             "quantity":         r.quantity,

@@ -767,6 +767,7 @@ export default function IAReportes() {
   const [perfiles, setPerfiles]                   = useState([]);
   const [segmentoFiltro, setSegmentoFiltro]       = useState(null);
   const [expandedPerfil, setExpandedPerfil]       = useState(null);
+  const [perfilesPage, setPerfilesPage]           = useState(1);
   const [retencion, setRetencion]                 = useState(null);
   const [forecast, setForecast]                   = useState([]);
   const [loadML, setLoadML]                       = useState(true);
@@ -909,6 +910,11 @@ export default function IAReportes() {
     return matchesName && matchesSeg;
   });
 
+  const PERFILES_PER_PAGE = 15;
+  const totalPerfilesPages = Math.ceil(perfilesFiltrados.length / PERFILES_PER_PAGE) || 1;
+  const safePerfilesPage = Math.min(perfilesPage, totalPerfilesPages);
+  const perfilesPaginados = perfilesFiltrados.slice((safePerfilesPage - 1) * PERFILES_PER_PAGE, safePerfilesPage * PERFILES_PER_PAGE);
+
   const clientesRiesgoFiltrados = clientesRiesgo.filter(c => {
     const cNom = (c.nombre ?? c.user_name ?? '').toLowerCase();
     return cNom.includes(busquedaRiesgo.toLowerCase());
@@ -922,6 +928,11 @@ export default function IAReportes() {
     ...s,
     nombre_corto: truncate(s.nombre ?? s.service_name ?? '', 22),
     total: s.total ?? s.revenue ?? 0,
+  }));
+
+  const pagosData = Object.entries(ordenesResumen?.ingresos_por_metodo ?? {}).map(([metodo, total]) => ({
+    metodo,
+    total: Number(total),
   }));
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -1038,7 +1049,7 @@ export default function IAReportes() {
       </div>
 
       {/* ── SECCIÓN 2: OPERACIONES ────────────────────────────────────── */}
-      <div className="ia-ops-grid ia-reveal" style={{ animationDelay: '100ms' }}>
+      <div className="ia-ops-grid ia-ops-grid--3 ia-reveal" style={{ animationDelay: '100ms' }}>
 
         {/* Left — Orders summary */}
         <div className="ia-card">
@@ -1095,6 +1106,37 @@ export default function IAReportes() {
               <div className="ia-empty-chart">Sin datos de estado de órdenes</div>
             )}
           </div>
+        </div>
+
+        {/* Middle — Distribución métodos de pago */}
+        <div className="ia-card">
+          <div className="ia-card-title">💳 Distribución Métodos de Pago</div>
+          {loadOps ? (
+            <Skel h={240} r={8} />
+          ) : pagosData.length === 0 ? (
+            <div className="ia-empty-chart">Sin ingresos en este período</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={pagosData} margin={{ top: 24, right: 20, bottom: 4, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#E8E3D8" vertical={false} />
+                <XAxis dataKey="metodo" tick={{ fontSize: 12, fill: '#6B6860' }} axisLine={false} tickLine={false} />
+                <YAxis
+                  tick={{ fontSize: 10, fill: '#888780' }} axisLine={false} tickLine={false}
+                  tickFormatter={n => '$' + (n / 1000).toFixed(0) + 'k'}
+                />
+                <Tooltip formatter={(v) => [fmtCOP(v), 'Total']} />
+                <Bar
+                  dataKey="total" name="Total"
+                  radius={[4, 4, 0, 0]}
+                  label={{ position: 'top', formatter: v => fmtCOP(v), fontSize: 10, fill: '#6B6860' }}
+                >
+                  {pagosData.map((entry) => (
+                    <Cell key={entry.metodo} fill={METODO_COLORS[entry.metodo] || '#888780'} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
         {/* Right — Top services */}
@@ -1249,7 +1291,7 @@ export default function IAReportes() {
           {/* 4B — Perfiles ML */}
           <div className="ia-card" style={{ marginBottom: 16 }}>
             <div className="ia-card-header">
-              <div className="ia-card-title">👥 Perfiles de Clientes ML</div>
+              <div className="ia-card-title">👥 Perfil de clientes</div>
               <div className="ia-card-header-actions">
                 <input 
                   type="text" 
@@ -1290,7 +1332,7 @@ export default function IAReportes() {
                     </tr>
                   </thead>
                   <tbody>
-                    {perfilesFiltrados.map((p, i) => {
+                    {perfilesPaginados.map((p, i) => {
                       const id = p.user_id ?? i;
                       return (
                         <PerfilRow
@@ -1307,6 +1349,25 @@ export default function IAReportes() {
                     })}
                   </tbody>
                 </table>
+              </div>
+            )}
+            {!loadML && totalPerfilesPages > 1 && (
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '16px', marginTop: '16px', fontSize: '0.875rem' }}>
+                <button 
+                  style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #E8E3D8', background: safePerfilesPage === 1 ? '#F5F5F5' : '#FFF', cursor: safePerfilesPage === 1 ? 'not-allowed' : 'pointer' }}
+                  disabled={safePerfilesPage === 1} 
+                  onClick={() => setPerfilesPage(p => Math.max(1, p - 1))}
+                >
+                  ← Anterior
+                </button>
+                <span>Página {safePerfilesPage} de {totalPerfilesPages}</span>
+                <button 
+                  style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #E8E3D8', background: safePerfilesPage === totalPerfilesPages ? '#F5F5F5' : '#FFF', cursor: safePerfilesPage === totalPerfilesPages ? 'not-allowed' : 'pointer' }}
+                  disabled={safePerfilesPage === totalPerfilesPages} 
+                  onClick={() => setPerfilesPage(p => Math.min(totalPerfilesPages, p + 1))}
+                >
+                  Siguiente →
+                </button>
               </div>
             )}
           </div>

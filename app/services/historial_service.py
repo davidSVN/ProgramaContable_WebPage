@@ -122,6 +122,7 @@ async def obtener_historial(
         
         items.append(OrderHistorialItem(
             id=o.id,
+            order_number=o.order_number,
             date=o.date,
             order_status=o.order_status,
             estado_pago=_derivar_estado_pago(o.order_status, o.is_paid, o.balance_due, o.total_amount),

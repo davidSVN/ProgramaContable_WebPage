@@ -314,6 +314,7 @@ class RegistrarPagoRequest(BaseModel):
 
 class OrdenResponse(BaseModel):
     order_id: int
+    order_number: Optional[int] = None
     user_id: int
     user_name: str
     user_contact: str
@@ -350,6 +351,7 @@ class DetalleOrdenResponse(BaseModel):
 class OrderDetailFlatResponse(BaseModel):
     id: int
     order_id: int
+    order_number: Optional[int] = None
     user_name: Optional[str] = None
     service_name: str
     quantity: float
@@ -447,6 +449,7 @@ class AbonoResponse(BaseModel):
 
 class OrderHistorialItem(BaseModel):
     id: int
+    order_number: Optional[int] = None
     date: datetime
     order_status: str
     estado_pago: str  # Campo derivado

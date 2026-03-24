@@ -56,7 +56,7 @@ const PrintInvoice = ({ orderData }) => {
         {/* Order Info */}
         <div className="order-title">ORDEN DE SERVICIO</div>
         <div className="order-number-box">
-          {orderData.order_id}
+          {orderData.order_number ?? orderData.order_id}
         </div>
 
         {/* Barcode */}

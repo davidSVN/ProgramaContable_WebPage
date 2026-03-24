@@ -400,6 +400,7 @@ export default function OrdenesPorCobrar({ user, onNavigate }) {
           <thead>
             <tr>
               <th className="opc-th">Fecha</th>
+              <th className="opc-th"># Orden</th>
               <th className="opc-th">Cliente</th>
               <th className="opc-th">Descripción</th>
               <th className="opc-th opc-th--num">Total</th>
@@ -414,7 +415,7 @@ export default function OrdenesPorCobrar({ user, onNavigate }) {
               <SkeletonRows />
             ) : ordenes.length === 0 ? (
               <tr>
-                <td colSpan={8}>
+                <td colSpan={9}>
                   <div className="opc-empty">
                     <span className="opc-empty-icon">🎉</span>
                     <p className="opc-empty-title">No hay órdenes pendientes de cobro</p>
@@ -442,6 +443,10 @@ export default function OrdenesPorCobrar({ user, onNavigate }) {
                     >
                       <td className="opc-td opc-td--date">
                         {fmtDate(orden.date)}
+                      </td>
+
+                      <td className="opc-td">
+                        <span className="opc-order-num">#{orden.order_number ?? orden.id}</span>
                       </td>
 
                       <td className="opc-td">
@@ -490,7 +495,7 @@ export default function OrdenesPorCobrar({ user, onNavigate }) {
 
                     {isExpanded && (
                       <tr className="opc-confirm-row">
-                        <td colSpan={8}>
+                        <td colSpan={9}>
                           <div className="opc-confirm-panel">
                             <span className="opc-confirm-label">
                               Confirmar pago:{' '}

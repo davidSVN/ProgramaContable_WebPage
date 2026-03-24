@@ -538,156 +538,6 @@ export default function B2BOrdenes({ user }) {
             />
           </div>
 
-          {/* ── Grid: Abono + Pago Factura ─────────────────────────────── */}
-          <div className="b2b-grid-2">
-
-            {/* Abono a Billetera */}
-            <div className="b2b-card">
-              <div className="b2b-section-title" style={{ marginBottom: 16 }}>
-                💰 Ingresar Abono a Billetera
-              </div>
-              <div className="b2b-form">
-                <div className="b2b-field">
-                  <label className="b2b-label">Monto ($) *</label>
-                  <input
-                    type="number" min="1"
-                    className={`b2b-input ${errAbono.amount ? 'b2b-input--err' : ''}`}
-                    placeholder="0"
-                    value={abono.amount}
-                    onChange={e => setAbono(p => ({ ...p, amount: e.target.value }))}
-                  />
-                  {errAbono.amount && <span className="b2b-err">{errAbono.amount}</span>}
-                </div>
-                <div className="b2b-field">
-                  <label className="b2b-label">Método de Pago *</label>
-                  <select
-                    className="b2b-select"
-                    value={abono.payment_method}
-                    onChange={e => setAbono(p => ({ ...p, payment_method: e.target.value }))}
-                  >
-                    <option>Efectivo</option>
-                    <option>Transferencia</option>
-                    <option>Nequi</option>
-                    <option>Daviplata</option>
-                    <option>Tarjeta</option>
-                  </select>
-                </div>
-                <div className="b2b-field">
-                  <label className="b2b-label">Notas (opcional)</label>
-                  <textarea
-                    className="b2b-textarea"
-                    placeholder="Observaciones..."
-                    maxLength={200}
-                    rows={2}
-                    value={abono.notes}
-                    onChange={e => setAbono(p => ({ ...p, notes: e.target.value }))}
-                  />
-                </div>
-                <BlockedAction>
-                <button
-                  className="b2b-btn-primary b2b-btn--full"
-                  onClick={handleAbono}
-                  disabled={loadingAbono}
-                >
-                  {loadingAbono
-                    ? <><span className="b2b-spinner" /> Registrando...</>
-                    : 'Registrar Abono a Billetera'}
-                </button>
-                </BlockedAction>
-                <div className="b2b-info-hint">
-                  ℹ️ El saldo se aplicará automáticamente a deudas pendientes (FIFO)
-                </div>
-              </div>
-            </div>
-
-            {/* Pagar Factura Consolidada */}
-            <div className="b2b-card">
-              <div className="b2b-section-title" style={{ marginBottom: 16 }}>
-                🧾 Pagar Factura Consolidada
-              </div>
-              <div className="b2b-form">
-                <div className="b2b-field">
-                  <label className="b2b-label">Factura *</label>
-                  <select
-                    className={`b2b-select ${errPago.factura ? 'b2b-input--err' : ''}`}
-                    value={selectedFactura?.invoice_id ?? ''}
-                    onChange={e => {
-                      const fac = facturasPendientes.find(
-                        f => f.invoice_id === Number(e.target.value)
-                      );
-                      setSelectedFactura(fac || null);
-                      if (fac) setPago(p => ({ ...p, monto: String(fac.balance_due) }));
-                    }}
-                  >
-                    <option value="">Seleccionar factura...</option>
-                    {facturasPendientes.map(f => (
-                      <option key={f.invoice_id} value={f.invoice_id}>
-                        Factura #{f.invoice_id} · {fmtCOP(f.balance_due)} · {f.ordenes_ids?.length || 0} órdenes · {fmtDate(f.created_at)}
-                      </option>
-                    ))}
-                  </select>
-                  {errPago.factura && <span className="b2b-err">{errPago.factura}</span>}
-                </div>
-                <div className="b2b-field">
-                  <label className="b2b-label">Monto a Pagar *</label>
-                  <input
-                    type="number" min="1"
-                    className={`b2b-input ${errPago.monto ? 'b2b-input--err' : ''}`}
-                    placeholder="0"
-                    value={pago.monto}
-                    disabled={pago.metodo_pago === 'Saldo a Favor'}
-                    onChange={e => setPago(p => ({ ...p, monto: e.target.value }))}
-                  />
-                  {errPago.monto && <span className="b2b-err">{errPago.monto}</span>}
-                </div>
-                <div className="b2b-field">
-                  <label className="b2b-label">Método de Pago *</label>
-                  <select
-                    className="b2b-select"
-                    value={pago.metodo_pago}
-                    onChange={e => {
-                      const m = e.target.value;
-                      setPago(p => ({
-                        ...p,
-                        metodo_pago: m,
-                        monto: m === 'Saldo a Favor' && selectedFactura
-                          ? String(selectedFactura.balance_due)
-                          : p.monto,
-                      }));
-                    }}
-                  >
-                    <option>Efectivo</option>
-                    <option>Transferencia</option>
-                    <option>Nequi</option>
-                    <option>Daviplata</option>
-                    <option>Tarjeta</option>
-                    <option>Saldo a Favor</option>
-                  </select>
-                </div>
-                {pago.metodo_pago === 'Saldo a Favor' && selectedFactura && (
-                  <div className={`b2b-saldo-banner ${saldoInsuficiente ? 'b2b-saldo-banner--warn' : 'b2b-saldo-banner--info'}`}>
-                    {saldoInsuficiente
-                      ? `⚠️ Saldo insuficiente. Disponible: ${fmtCOP(selectedUser.saldo_a_favor)}`
-                      : `⚡ Se descontará ${fmtCOP(selectedFactura.balance_due)} del saldo disponible (${fmtCOP(selectedUser.saldo_a_favor)})`}
-                  </div>
-                )}
-                <BlockedAction>
-                <button
-                  className="b2b-btn-primary b2b-btn--full"
-                  onClick={handlePagoFactura}
-                  disabled={loadingPago || !!saldoInsuficiente}
-                >
-                  {loadingPago
-                    ? <><span className="b2b-spinner" /> Procesando pago...</>
-                    : 'Registrar Pago Global'}
-                </button>
-                </BlockedAction>
-                <div className="b2b-info-hint">
-                  ⚡ "Saldo a Favor" descuenta directo de la billetera
-                </div>
-              </div>
-            </div>
-          </div>
 
           {/* ── Sección 3: Consolidar Órdenes ──────────────────────────── */}
           <div className="b2b-card">
@@ -771,7 +621,7 @@ export default function B2BOrdenes({ user }) {
                               />
                             </td>
                             <td className="b2b-td-date">{fmtDate(o.created_at)}</td>
-                            <td><span className="b2b-order-id">#{o.order_id}</span></td>
+                            <td><span className="b2b-order-id">#{o.order_number ?? o.order_id}</span></td>
                             <td className="b2b-td-desc">{o.items_description || '—'}</td>
                             <td className="b2b-td-right">{fmtCOP(o.order_value)}</td>
                             <td className="b2b-td-right b2b-td-muted">{fmtCOP(o.abono)}</td>
@@ -982,6 +832,157 @@ export default function B2BOrdenes({ user }) {
             {!selectedUser?.user_contact && (
               <span className="b2b-wa-hint">Sin número de contacto registrado</span>
             )}
+          </div>
+
+          {/* ── Grid: Abono + Pago Factura ─────────────────────────────── */}
+          <div className="b2b-grid-2">
+
+            {/* Abono a Billetera */}
+            <div className="b2b-card">
+              <div className="b2b-section-title" style={{ marginBottom: 16 }}>
+                💰 Ingresar Abono a Billetera
+              </div>
+              <div className="b2b-form">
+                <div className="b2b-field">
+                  <label className="b2b-label">Monto ($) *</label>
+                  <input
+                    type="number" min="1"
+                    className={`b2b-input ${errAbono.amount ? 'b2b-input--err' : ''}`}
+                    placeholder="0"
+                    value={abono.amount}
+                    onChange={e => setAbono(p => ({ ...p, amount: e.target.value }))}
+                  />
+                  {errAbono.amount && <span className="b2b-err">{errAbono.amount}</span>}
+                </div>
+                <div className="b2b-field">
+                  <label className="b2b-label">Método de Pago *</label>
+                  <select
+                    className="b2b-select"
+                    value={abono.payment_method}
+                    onChange={e => setAbono(p => ({ ...p, payment_method: e.target.value }))}
+                  >
+                    <option>Efectivo</option>
+                    <option>Transferencia</option>
+                    <option>Nequi</option>
+                    <option>Daviplata</option>
+                    <option>Tarjeta</option>
+                  </select>
+                </div>
+                <div className="b2b-field">
+                  <label className="b2b-label">Notas (opcional)</label>
+                  <textarea
+                    className="b2b-textarea"
+                    placeholder="Observaciones..."
+                    maxLength={200}
+                    rows={2}
+                    value={abono.notes}
+                    onChange={e => setAbono(p => ({ ...p, notes: e.target.value }))}
+                  />
+                </div>
+                <BlockedAction>
+                <button
+                  className="b2b-btn-primary b2b-btn--full"
+                  onClick={handleAbono}
+                  disabled={loadingAbono}
+                >
+                  {loadingAbono
+                    ? <><span className="b2b-spinner" /> Registrando...</>
+                    : 'Registrar Abono a Billetera'}
+                </button>
+                </BlockedAction>
+                <div className="b2b-info-hint">
+                  ℹ️ El saldo se aplicará automáticamente a deudas pendientes (FIFO)
+                </div>
+              </div>
+            </div>
+
+            {/* Pagar Factura Consolidada */}
+            <div className="b2b-card">
+              <div className="b2b-section-title" style={{ marginBottom: 16 }}>
+                🧾 Pagar Factura Consolidada
+              </div>
+              <div className="b2b-form">
+                <div className="b2b-field">
+                  <label className="b2b-label">Factura *</label>
+                  <select
+                    className={`b2b-select ${errPago.factura ? 'b2b-input--err' : ''}`}
+                    value={selectedFactura?.invoice_id ?? ''}
+                    onChange={e => {
+                      const fac = facturasPendientes.find(
+                        f => f.invoice_id === Number(e.target.value)
+                      );
+                      setSelectedFactura(fac || null);
+                      if (fac) setPago(p => ({ ...p, monto: String(fac.balance_due) }));
+                    }}
+                  >
+                    <option value="">Seleccionar factura...</option>
+                    {facturasPendientes.map(f => (
+                      <option key={f.invoice_id} value={f.invoice_id}>
+                        Factura #{f.invoice_id} · {fmtCOP(f.balance_due)} · {f.ordenes_ids?.length || 0} órdenes · {fmtDate(f.created_at)}
+                      </option>
+                    ))}
+                  </select>
+                  {errPago.factura && <span className="b2b-err">{errPago.factura}</span>}
+                </div>
+                <div className="b2b-field">
+                  <label className="b2b-label">Monto a Pagar *</label>
+                  <input
+                    type="number" min="1"
+                    className={`b2b-input ${errPago.monto ? 'b2b-input--err' : ''}`}
+                    placeholder="0"
+                    value={pago.monto}
+                    disabled={pago.metodo_pago === 'Saldo a Favor'}
+                    onChange={e => setPago(p => ({ ...p, monto: e.target.value }))}
+                  />
+                  {errPago.monto && <span className="b2b-err">{errPago.monto}</span>}
+                </div>
+                <div className="b2b-field">
+                  <label className="b2b-label">Método de Pago *</label>
+                  <select
+                    className="b2b-select"
+                    value={pago.metodo_pago}
+                    onChange={e => {
+                      const m = e.target.value;
+                      setPago(p => ({
+                        ...p,
+                        metodo_pago: m,
+                        monto: m === 'Saldo a Favor' && selectedFactura
+                          ? String(selectedFactura.balance_due)
+                          : p.monto,
+                      }));
+                    }}
+                  >
+                    <option>Efectivo</option>
+                    <option>Transferencia</option>
+                    <option>Nequi</option>
+                    <option>Daviplata</option>
+                    <option>Tarjeta</option>
+                    <option>Saldo a Favor</option>
+                  </select>
+                </div>
+                {pago.metodo_pago === 'Saldo a Favor' && selectedFactura && (
+                  <div className={`b2b-saldo-banner ${saldoInsuficiente ? 'b2b-saldo-banner--warn' : 'b2b-saldo-banner--info'}`}>
+                    {saldoInsuficiente
+                      ? `⚠️ Saldo insuficiente. Disponible: ${fmtCOP(selectedUser.saldo_a_favor)}`
+                      : `⚡ Se descontará ${fmtCOP(selectedFactura.balance_due)} del saldo disponible (${fmtCOP(selectedUser.saldo_a_favor)})`}
+                  </div>
+                )}
+                <BlockedAction>
+                <button
+                  className="b2b-btn-primary b2b-btn--full"
+                  onClick={handlePagoFactura}
+                  disabled={loadingPago || !!saldoInsuficiente}
+                >
+                  {loadingPago
+                    ? <><span className="b2b-spinner" /> Procesando pago...</>
+                    : 'Registrar Pago Global'}
+                </button>
+                </BlockedAction>
+                <div className="b2b-info-hint">
+                  ⚡ "Saldo a Favor" descuenta directo de la billetera
+                </div>
+              </div>
+            </div>
           </div>
 
         </div>

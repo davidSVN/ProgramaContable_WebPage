@@ -323,7 +323,7 @@ export default function ServiciosPorOrdenes() {
                       className={`spo-row ${row.is_agency ? 'spo-row--agency' : ''}`}
                     >
                       <td className="spo-td-date">{fmtDate(row.date)}</td>
-                      <td><span className="spo-order-id">#{row.order_id}</span></td>
+                      <td><span className="spo-order-id">#{row.order_number ?? row.order_id}</span></td>
                       <td><span className="spo-client">{row.user_name || '—'}</span></td>
                       <td className="spo-td-service">{truncate(row.service_name, 35)}</td>
                       <td className="spo-td-service">{truncate(row.description, 35) || '—'}</td>

@@ -436,6 +436,7 @@ function ServiceSearchInput({ services, onAddItem, abbreviations = {} }) {
         <div className="ssi-search-wrap">
           <span className="ssi-search-icon" aria-hidden="true">🔍</span>
           <input
+            id="service-search-input"
             ref={searchRef}
             className={`ssi-search-input${selected ? ' ssi-search-input--selected' : ''}`}
             type="text"
@@ -609,7 +610,7 @@ function ItemsTable({ items, onUpdate, onRemove }) {
         </thead>
         <tbody>
           {items.map(item => {
-            const rowTotal = item.quantity * item.unit_price;
+            const rowTotal = (parseFloat(item.quantity) || 0) * item.unit_price;
             const descRequired = item.is_extra && !item.description.trim();
 
             return (
@@ -642,7 +643,10 @@ function ItemsTable({ items, onUpdate, onRemove }) {
                       min="0.5"
                       step="0.5"
                       value={item.quantity}
-                      onChange={e => onUpdate(item.id, { quantity: parseFloat(e.target.value) || 1 })}
+                      onChange={e => {
+                        const val = e.target.value;
+                        onUpdate(item.id, { quantity: val === '' ? '' : (parseFloat(val) || 0) });
+                      }}
                       aria-label="Cantidad"
                     />
                   )}
@@ -842,7 +846,7 @@ function PaymentSection({
 
 /* ── Totals Panel ───────────────────────────────────────────── */
 function TotalsPanel({
-  subtotal, discountAmt, total, totalAbono, saldoPendiente, paymentStatus,
+  subtotal, discountAmt, descuentoManual, onDescuentoManualChange, total, totalAbono, saldoPendiente, paymentStatus,
   canSubmit, disabledReason, isCreating, onSubmit,
   deliveryPrint, deliveryWhatsApp, onDeliveryPrint, onDeliveryWhatsApp, hasClientPhone,
 }) {
@@ -853,9 +857,24 @@ function TotalsPanel({
           <span>Subtotal</span>
           <span className="no-totals-value">{fmtCOP(subtotal)}</span>
         </div>
+        <div className="no-totals-row no-totals-row--manual-discount">
+          <span>Descuento Manual</span>
+          <div className="no-discount-input-wrapper">
+            <span className="no-discount-currency">$</span>
+            <input
+              type="number"
+              className="no-discount-input"
+              value={descuentoManual}
+              onChange={e => onDescuentoManualChange(e.target.value)}
+              placeholder="0"
+              min="0"
+              step="1000"
+            />
+          </div>
+        </div>
         {discountAmt > 0 && (
           <div className="no-totals-row no-totals-row--discount">
-            <span>Descuento</span>
+            <span>Descuento Fidelidad</span>
             <span className="no-totals-value">−{fmtCOP(discountAmt)}</span>
           </div>
         )}
@@ -944,6 +963,7 @@ export default function NuevaOrden() {
   const [clientResults, setClientResults]   = useState([]);
   const [searchLoading, setSearchLoading]   = useState(false);
   const [showDropdown, setShowDropdown]     = useState(false);
+  const [focusedClientIndex, setFocusedClientIndex] = useState(-1);
   const [selectedClient, setSelectedClient] = useState(null);
   const [showFidelityBanner, setShowFidelityBanner] = useState(false);
 
@@ -955,6 +975,9 @@ export default function NuevaOrden() {
 
   // ── Items ─────────────────────────────────────────────────
   const [items, setItems] = useState([]);
+
+  // ── Descuento Manual ──────────────────────────────────────
+  const [descuentoManual, setDescuentoManual] = useState('');
 
   // ── Payment ───────────────────────────────────────────────
   const [paymentStatus, setPaymentStatus] = useState('Debe');
@@ -981,14 +1004,16 @@ export default function NuevaOrden() {
 
   // ── Computed ─────────────────────────────────────────────
   const subtotal = useMemo(
-    () => items.filter(i => !i.is_discount).reduce((s, i) => s + i.quantity * i.unit_price, 0),
+    () => items.filter(i => !i.is_discount).reduce((s, i) => s + (parseFloat(i.quantity) || 0) * (parseFloat(i.unit_price) || 0), 0),
     [items]
   );
+  const manualDiscountAmt = parseFloat(descuentoManual) || 0;
   const discountAmt = useMemo(
-    () => items.filter(i => i.is_discount).reduce((s, i) => s + Math.abs(i.unit_price * i.quantity), 0),
+    () => items.filter(i => i.is_discount).reduce((s, i) => s + Math.abs((parseFloat(i.unit_price) || 0) * (parseFloat(i.quantity) || 0)), 0),
     [items]
   );
-  const total = subtotal - discountAmt;
+  const totalDiscountAmt = discountAmt + manualDiscountAmt;
+  const total = subtotal - totalDiscountAmt;
 
   const totalAbono = useMemo(() => {
     if (paymentStatus === 'Pagada') return total;
@@ -1103,6 +1128,7 @@ export default function NuevaOrden() {
     setClientResults([]);
     setShowDropdown(false);
     setItems([]);
+    setDescuentoManual('');
     setPaymentStatus('Debe');
     setSingleMethod('Efectivo');
     setPayments(initPayments());
@@ -1126,6 +1152,7 @@ export default function NuevaOrden() {
     setClientSearch(val);
     setSelectedClient(null);
     setShowFidelityBanner(false);
+    setFocusedClientIndex(-1);
     if (val.length < 2) {
       setClientResults([]);
       setShowDropdown(false);
@@ -1152,6 +1179,10 @@ export default function NuevaOrden() {
     setClientSearch(client.user_name || '');
     setClientResults([]);
     setShowDropdown(false);
+    setFocusedClientIndex(-1);
+    setTimeout(() => {
+      document.getElementById('service-search-input')?.focus();
+    }, 50);
 
     // Fidelity check: next order (total_orders + 1) divisible by 5
     const nextOrder = (client.total_orders || 0) + 1;
@@ -1188,12 +1219,26 @@ export default function NuevaOrden() {
     if (mode === 'B2B') setAvailableServices([]);
   };
 
-  // ── Enter key on search selects first result ──────────────
+  // ── Keyboard navigation on search ──────────────
   const handleSearchKeyDown = (e) => {
-    if (e.key === 'Enter' && clientResults.length > 0) {
-      selectClient(clientResults[0]);
+    if (!showDropdown || clientResults.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setFocusedClientIndex(prev => (prev < clientResults.length - 1 ? prev + 1 : prev));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setFocusedClientIndex(prev => (prev > 0 ? prev - 1 : 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const indexToSelect = focusedClientIndex >= 0 ? focusedClientIndex : 0;
+      if (clientResults[indexToSelect]) {
+        selectClient(clientResults[indexToSelect]);
+      }
+    } else if (e.key === 'Escape') {
+      setShowDropdown(false);
+      setFocusedClientIndex(-1);
     }
-    if (e.key === 'Escape') setShowDropdown(false);
   };
 
   // ── Add service to items ──────────────────────────────────
@@ -1267,7 +1312,7 @@ export default function NuevaOrden() {
         const priceStr = `$${Math.round(total).toLocaleString('es-CO')}`;
         return `${qty}x ${name}${i.description ? ' ('+i.description+')' : ''} ... ${priceStr}`;
       }).join('\n');
-      const discountVal = discountAmt;
+      const discountVal = totalDiscountAmt;
 
       let result;
       if (mode === 'B2C') {
@@ -1304,7 +1349,7 @@ export default function NuevaOrden() {
       }
 
       // Build common order data
-      const orderNum = result?.order_id ?? result?.id ?? '—';
+      const orderNum = result?.order_number ?? result?.order_id ?? result?.id ?? '—';
       const ordenParaImprimir = {
         ...result,
         servicios_data: items.map(i => ({
@@ -1316,8 +1361,10 @@ export default function NuevaOrden() {
       };
 
       // Print if selected
-      if (deliveryPrint) {
+      if (deliveryPrint && !deliveryWhatsApp) {
         await printOrden(ordenParaImprimir, negocioConfig, 2);
+      } else if (deliveryPrint && deliveryWhatsApp) {
+        await printOrden(ordenParaImprimir, negocioConfig, 1);
       }
 
       // WhatsApp if selected
@@ -1397,10 +1444,10 @@ export default function NuevaOrden() {
 
             {showDropdown && clientResults.length > 0 && (
               <div className="no-client-dropdown" role="listbox">
-                {clientResults.map(c => (
+                {clientResults.map((c, index) => (
                   <div
                     key={c.user_id}
-                    className="no-client-result"
+                    className={`no-client-result${index === focusedClientIndex ? ' no-client-result--focused' : ''}`}
                     onClick={() => selectClient(c)}
                     role="option"
                     aria-selected={false}
@@ -1516,6 +1563,8 @@ export default function NuevaOrden() {
         <TotalsPanel
           subtotal={subtotal}
           discountAmt={discountAmt}
+          descuentoManual={descuentoManual}
+          onDescuentoManualChange={setDescuentoManual}
           total={total}
           totalAbono={totalAbono}
           saldoPendiente={saldoPendiente}
