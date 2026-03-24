@@ -235,6 +235,7 @@ async def borrar(
 class AgencyServiceDTO:
     id:               int
     order_id:         int
+    order_number:     Optional[int]
     date:             datetime
     customer_name:    str
     service_name:     str
@@ -249,6 +250,7 @@ class AgencyServiceDTO:
         return cls(
             id               = row.id,
             order_id         = row.order_id,
+            order_number     = getattr(row, "order_number", None),
             date             = row.date,
             customer_name    = row.user_name,
             service_name     = row.service_name,
@@ -425,6 +427,7 @@ async def listar_detalles_agencia(
         select(
             OrderDetail.id,
             OrderDetail.order_id,
+            OrderDetail.order_number,
             OrderDetail.service_name,
             OrderDetail.quantity,
             OrderDetail.unit_price,
