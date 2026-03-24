@@ -119,6 +119,7 @@ class GastoResponse(BaseModel):
 class AgencyServiceDetailResponse(BaseModel):
     id: int
     order_id: int
+    order_number: Optional[int] = None
     date: datetime
     customer_name: str
     service_name: str
