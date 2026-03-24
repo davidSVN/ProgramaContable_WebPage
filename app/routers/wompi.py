@@ -130,11 +130,25 @@ async def create_payment(
     if body.plan not in ("basic", "premium"):
         raise HTTPException(status_code=400, detail="Plan inválido. Debe ser 'basic' o 'premium'.")
 
-    if body.period not in ("monthly", "yearly"):
-        raise HTTPException(status_code=400, detail="Período inválido. Debe ser 'monthly' o 'yearly'.")
+    if body.period not in ("monthly", "yearly", "trial"):
+        raise HTTPException(status_code=400, detail="Período inválido. Debe ser 'monthly', 'yearly' o 'trial'.")
 
     if current_user.tenant_id is None:
         raise HTTPException(status_code=400, detail="Usuario sin tenant asociado.")
+
+    # El trial solo está disponible si el tenant nunca ha tenido ningún pago aprobado
+    if body.period == "trial":
+        existing_payment = await db.execute(
+            select(PaymentTransaction).where(
+                PaymentTransaction.tenant_id == current_user.tenant_id,
+                PaymentTransaction.status == "APPROVED",
+            )
+        )
+        if existing_payment.scalars().first():
+            raise HTTPException(
+                status_code=400,
+                detail="El período de prueba solo está disponible para cuentas nuevas. Selecciona el plan mensual o anual.",
+            )
 
     transaction = await wompi_service.create_payment_record(
         db=db,
@@ -264,6 +278,14 @@ async def subscription_status(
         delta = tenant.plan_expires_at - datetime.utcnow()
         days_remaining = max(0, delta.days)
 
+    # El trial no está disponible si el tenant tiene cualquier pago aprobado previo
+    any_payment_stmt = select(PaymentTransaction).where(
+        PaymentTransaction.tenant_id == tenant.id,
+        PaymentTransaction.status == "APPROVED",
+    )
+    any_payment_result = await db.execute(any_payment_stmt)
+    has_used_trial = any_payment_result.scalars().first() is not None
+
     return {
         "plan": tenant.plan,
         "plan_expires_at": tenant.plan_expires_at.isoformat() if tenant.plan_expires_at else None,
@@ -278,6 +300,7 @@ async def subscription_status(
             tenant.grace_period_ends_at is not None
             and tenant.grace_period_ends_at > datetime.utcnow()
         ),
+        "has_used_trial": has_used_trial,
     }
 
 

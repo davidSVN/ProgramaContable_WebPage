@@ -26,20 +26,16 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 PLAN_PRICES = {
     "basic": {
-        "monthly": 6990000,     # $49.900 COP
-        "yearly": 76800000,     # $479.000 COP (ahorra 2 meses)
+        "monthly": 6990000,     # $69.900 COP
+        "yearly": 76800000,     # $768.000 COP
+        "trial": 3495000,       # $34.950 COP (50% descuento, 7 días)
     },
     "premium": {
-        "monthly":  9490000,     # $89.900 COP 8990000 -> se le agregan dos ceros siempre
-        "yearly": 104390000,     # $862.000 COP (ahorra 2 meses)
+        "monthly": 9490000,     # $94.900 COP
+        "yearly": 104390000,    # $1.043.900 COP
+        "trial": 4745000,       # $47.450 COP (50% descuento, 7 días)
     },
 }
-    # "monthly": 4990000,     # $49.900 COP
-    #     "yearly": 47900000,     # $479.000 COP (ahorra 2 meses)
-    # },
-    # "premium": {
-    #     "monthly": 8990000,     # $89.900 COP
-    #     "yearly": 86200000,  
 
 
 def get_price(plan: str, period: str) -> int:
@@ -110,6 +106,8 @@ async def create_payment_record(
     period: str,
 ) -> PaymentTransaction:
     """Crea un registro de transacción pendiente."""
+    if period not in ("monthly", "yearly", "trial"):
+        raise ValueError(f"Período inválido: {period}")
     amount = get_price(plan, period)
     reference = generate_reference(tenant_id)
 
@@ -155,6 +153,8 @@ async def process_approved_transaction(
     now = datetime.utcnow()
     if transaction.billing_period == "yearly":
         expires_at = now + timedelta(days=365)
+    elif transaction.billing_period == "trial":
+        expires_at = now + timedelta(days=7)
     else:
         expires_at = now + timedelta(days=30)
 
@@ -368,6 +368,11 @@ async def process_recurring_renewals(db: AsyncSession) -> list:
             last_tx = last_tx_result.scalars().first()
 
             billing_period = last_tx.billing_period if last_tx else "monthly"
+
+            # Si el último pago fue trial, el siguiente debe ser monthly
+            if billing_period == "trial":
+                billing_period = "monthly"
+
             amount = get_price(tenant.plan, billing_period)
             reference = generate_reference(tenant.id)
 
@@ -388,7 +393,7 @@ async def process_recurring_renewals(db: AsyncSession) -> list:
                 tenant_id=tenant.id,
                 reference=reference,
                 plan=tenant.plan,
-                billing_period=billing_period,
+                billing_period="monthly",  # Siempre monthly en renovaciones
                 amount_in_cents=amount,
                 currency="COP",
                 status="PENDING",

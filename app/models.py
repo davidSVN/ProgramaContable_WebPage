@@ -290,7 +290,7 @@ class PaymentTransaction(Base):
 
     # Plan y período que se está comprando
     plan = Column(String(50), nullable=False)              # "basic" | "premium"
-    billing_period = Column(String(20), nullable=False)    # "monthly" | "yearly"
+    billing_period = Column(String(20), nullable=False)    # "monthly" | "yearly" | "trial"
 
     # Monto en centavos (como lo maneja Wompi)
     amount_in_cents = Column(Integer, nullable=False)

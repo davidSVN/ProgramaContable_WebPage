@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { clearToken, getMe } from '../services/auth';
 import { PLAN_PRICES, createPayment, redirectToWompiCheckout } from '../services/wompi';
+import { api } from '../services/api';
 import './SuscripcionRequerida.css';
 
 const BASIC_FEATURES = [
@@ -24,12 +25,21 @@ export default function SuscripcionRequerida({ onPlanActivated }) {
   const [loading, setLoading] = useState(null); // 'basic' | 'premium' | null
   const [error, setError] = useState(null);
   const [user, setUser] = useState(null);
-  const [selectedPeriod, setSelectedPeriod] = useState('monthly');
+  const [selectedPeriod, setSelectedPeriod] = useState('trial');
+  const [usedTrial, setUsedTrial] = useState(true); // default true hasta verificar
 
   useEffect(() => {
     getMe()
       .then(u => setUser(u))
       .catch(() => {});
+    api.get('/wompi/subscription-status')
+      .then(data => {
+        const trialUsed = data.has_used_trial || false;
+        setUsedTrial(trialUsed);
+        // Si ya usó el trial, mostrar mensual por defecto
+        if (trialUsed) setSelectedPeriod('monthly');
+      })
+      .catch(() => { setUsedTrial(true); setSelectedPeriod('monthly'); });
   }, []);
 
   const handleActivar = async (plan) => {
@@ -54,7 +64,7 @@ export default function SuscripcionRequerida({ onPlanActivated }) {
   };
 
   const getPriceData = (plan) => {
-    return PLAN_PRICES[plan][selectedPeriod];
+    return PLAN_PRICES[plan][selectedPeriod] || PLAN_PRICES[plan].monthly;
   };
 
   return (
@@ -84,6 +94,15 @@ export default function SuscripcionRequerida({ onPlanActivated }) {
 
         {/* Period Selector */}
         <div className="sr-period-selector">
+          {!usedTrial && (
+            <button
+              className={`sr-period-btn ${selectedPeriod === 'trial' ? 'sr-period-btn--active sr-period-btn--trial' : ''}`}
+              onClick={() => setSelectedPeriod('trial')}
+            >
+              🔥 Trial 7 días
+              <span className="sr-period-savings" style={{ background: '#FF6B2B' }}>-50%</span>
+            </button>
+          )}
           <button
             className={`sr-period-btn ${selectedPeriod === 'monthly' ? 'sr-period-btn--active' : ''}`}
             onClick={() => setSelectedPeriod('monthly')}
@@ -110,6 +129,16 @@ export default function SuscripcionRequerida({ onPlanActivated }) {
             <div className="sr-plan__header">
               <h2 className="sr-plan__name">Basic</h2>
               <p className="sr-plan__price">{getPriceData('basic').label}</p>
+              {selectedPeriod === 'trial' && (
+                <>
+                  <p style={{ fontSize: '13px', color: '#6B6B6B', margin: '-4px 0 4px' }}>
+                    por 7 días — luego <s style={{ color: '#9E9E9E' }}>{PLAN_PRICES.basic.trial.originalLabel}</s> <strong>$69.900/mes</strong>
+                  </p>
+                  <p style={{ fontSize: '12px', color: '#FF6B2B', fontWeight: 600, margin: '0 0 4px' }}>
+                    {PLAN_PRICES.basic.trial.savings}
+                  </p>
+                </>
+              )}
               {selectedPeriod === 'yearly' && (
                 <p className="sr-plan__savings">{PLAN_PRICES.basic.yearly.savings}</p>
               )}
@@ -129,7 +158,7 @@ export default function SuscripcionRequerida({ onPlanActivated }) {
             >
               {loading === 'basic'
                 ? <><span className="sr-spinner" /> Redirigiendo...</>
-                : 'Activar Basic →'}
+                : selectedPeriod === 'trial' ? 'Probar Basic 7 días →' : 'Activar Basic →'}
             </button>
           </div>
 
@@ -139,6 +168,16 @@ export default function SuscripcionRequerida({ onPlanActivated }) {
             <div className="sr-plan__header">
               <h2 className="sr-plan__name sr-plan__name--premium">Premium</h2>
               <p className="sr-plan__price">{getPriceData('premium').label}</p>
+              {selectedPeriod === 'trial' && (
+                <>
+                  <p style={{ fontSize: '13px', color: '#6B6B6B', margin: '-4px 0 4px' }}>
+                    por 7 días — luego <s style={{ color: '#9E9E9E' }}>{PLAN_PRICES.premium.trial.originalLabel}</s> <strong>$94.900/mes</strong>
+                  </p>
+                  <p style={{ fontSize: '12px', color: '#FF6B2B', fontWeight: 600, margin: '0 0 4px' }}>
+                    {PLAN_PRICES.premium.trial.savings}
+                  </p>
+                </>
+              )}
               {selectedPeriod === 'yearly' && (
                 <p className="sr-plan__savings">{PLAN_PRICES.premium.yearly.savings}</p>
               )}
@@ -158,7 +197,7 @@ export default function SuscripcionRequerida({ onPlanActivated }) {
             >
               {loading === 'premium'
                 ? <><span className="sr-spinner sr-spinner--light" /> Redirigiendo...</>
-                : 'Activar Premium →'}
+                : selectedPeriod === 'trial' ? 'Probar Premium 7 días →' : 'Activar Premium →'}
             </button>
           </div>
         </div>

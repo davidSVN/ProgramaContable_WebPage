@@ -663,7 +663,7 @@ class BusinessSettingsResponse(BaseModel):
 class CreatePaymentRequest(BaseModel):
     """Request del frontend para iniciar un pago."""
     plan: str       # "basic" | "premium"
-    period: str     # "monthly" | "yearly"
+    period: str     # "monthly" | "yearly" | "trial"
 
 
 class PaymentIntegrityResponse(BaseModel):
