@@ -1,6 +1,6 @@
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Float, Text, UniqueConstraint
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
 
 from app.database import Base
 
@@ -142,6 +142,9 @@ class OrderHeader(Base):
     user_id = Column(Integer, ForeignKey("laundry_users.user_id"), nullable=False)
     user_name = Column(String(150))
 
+    # Domicilio
+    is_domicilio = Column(Boolean, default=False, nullable=False)
+
     # Tracking de entrega
     delivered_at = Column(DateTime, nullable=True)
     delivered_by = Column(String(100), nullable=True)
@@ -154,6 +157,7 @@ class OrderHeader(Base):
     details = relationship("OrderDetail", back_populates="order", cascade="all, delete-orphan")
     payments = relationship("OrderPayment", back_populates="order", cascade="all, delete-orphan", foreign_keys="[OrderPayment.order_id]")
     consolidated_invoice = relationship("ConsolidatedInvoice", back_populates="orders")
+    domicilio = relationship("DomicilioDetail", back_populates="order", uselist=False, cascade="all, delete-orphan")
 
 
 class OrderDetail(Base):
@@ -273,6 +277,43 @@ class AppSettings(Base):
     tenant = relationship("Tenant")
 
     __table_args__ = (UniqueConstraint("key", "tenant_id"),)
+
+
+class DomicilioDetail(Base):
+    __tablename__ = "domicilio_details"
+
+    id                  = Column(Integer, primary_key=True, index=True)
+    tenant_id           = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
+    order_id            = Column(Integer, ForeignKey("orders.id"), nullable=False, unique=True)
+
+    # Recogida
+    direccion_recogida  = Column(String(255), nullable=False)
+    fecha_recogida      = Column(DateTime, nullable=True)
+    hora_recogida       = Column(String(10), nullable=True)   # "HH:MM"
+
+    # Entrega
+    direccion_entrega   = Column(String(255), nullable=False)
+    fecha_entrega       = Column(DateTime, nullable=True)
+    hora_entrega        = Column(String(10), nullable=True)   # "HH:MM"
+
+    # Receptor
+    nombre_receptor     = Column(String(100), nullable=True)
+
+    # Empleado asignado
+    empleado_id         = Column(Integer, ForeignKey("app_users.id"), nullable=True)
+    empleado_nombre     = Column(String(100), nullable=True)
+
+    # Estado del domicilio
+    estado_domicilio    = Column(String(50), default="Pendiente")
+    # "Pendiente" | "En camino recogida" | "Recogido" | "En camino entrega" | "Entregado"
+
+    notas               = Column(Text, nullable=True)
+    created_at          = Column(DateTime, default=datetime.utcnow)
+    updated_at          = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    tenant   = relationship("Tenant")
+    order    = relationship("OrderHeader", back_populates="domicilio")
+    empleado = relationship("AppUser", foreign_keys=[empleado_id])
 
 
 class PaymentTransaction(Base):

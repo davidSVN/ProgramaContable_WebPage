@@ -3,9 +3,9 @@ from typing import Optional, List
 from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import OrderHeader, LaundryUser
+from app.models import OrderHeader, LaundryUser, DomicilioDetail
 from sqlalchemy.orm import joinedload, selectinload
-from app.schemas import OrderHistorialItem, OrderHistorialResponse, OrderStatsResponse
+from app.schemas import OrderHistorialItem, OrderHistorialResponse, OrderStatsResponse, DomicilioResponse
 
 def _derivar_estado_pago(order_status: str, is_paid: bool, balance_due: float, total_amount: float) -> str:
     if order_status == 'Cancelada':
@@ -29,14 +29,18 @@ async def obtener_historial(
     desde: Optional[date] = None,
     hasta: Optional[date] = None,
     is_institute: Optional[bool] = None,
+    is_domicilio: Optional[bool] = None,
+    estado_domicilio: Optional[str] = None,
+    empleado_id: Optional[int] = None,
     sort_field: str = "id",
     sort_direction: str = "desc"
 ) -> OrderHistorialResponse:
-    
+
     # Base query with eager loads
     stmt = select(OrderHeader).options(
-        joinedload(OrderHeader.buyer), 
-        selectinload(OrderHeader.payments)
+        joinedload(OrderHeader.buyer),
+        selectinload(OrderHeader.payments),
+        joinedload(OrderHeader.domicilio),
     )
     
     # Outer join with LaundryUser to allow filtering by contact
@@ -50,7 +54,17 @@ async def obtener_historial(
     
     if is_institute is not None:
         stmt = stmt.where(OrderHeader.is_institute == is_institute)
-        
+
+    if is_domicilio is not None:
+        stmt = stmt.where(OrderHeader.is_domicilio == is_domicilio)
+
+    if estado_domicilio or empleado_id is not None:
+        stmt = stmt.join(DomicilioDetail, OrderHeader.id == DomicilioDetail.order_id, isouter=True)
+        if estado_domicilio:
+            stmt = stmt.where(DomicilioDetail.estado_domicilio == estado_domicilio)
+        if empleado_id is not None:
+            stmt = stmt.where(DomicilioDetail.empleado_id == empleado_id)
+
     if desde:
         stmt = stmt.where(func.date(OrderHeader.date) >= desde)
     if hasta:
@@ -121,6 +135,11 @@ async def obtener_historial(
         days_diff = (now_bogota - o.date) if o.date else None
         days_p = max(0, days_diff.days) if days_diff else 0
         
+        # Build domicilio response if present
+        domicilio_resp = None
+        if o.domicilio:
+            domicilio_resp = DomicilioResponse.model_validate(o.domicilio)
+
         items.append(OrderHistorialItem(
             id=o.id,
             order_number=o.order_number,
@@ -148,7 +167,10 @@ async def obtener_historial(
             delivered_by=o.delivered_by,
             received_by_name=o.received_by_name,
             invoice_delivered=o.invoice_delivered,
-            has_signature=bool(o.delivery_signature)
+            has_signature=bool(o.delivery_signature),
+            # Domicilio info
+            is_domicilio=o.is_domicilio or False,
+            domicilio=domicilio_resp,
         ))
         
     total_pages = (total + limit - 1) // limit if limit > 0 else 0

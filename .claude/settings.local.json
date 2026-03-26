@@ -10,7 +10,8 @@
       "Bash(python -m uvicorn app.main:app --reload --port 8000)",
       "Bash(npm run:*)",
       "Bash(alembic revision:*)",
-      "Bash(python -m alembic revision --autogenerate -m \"unique_tenant_nombre\")"
+      "Bash(python -m alembic revision --autogenerate -m \"unique_tenant_nombre\")",
+      "Bash(python -m alembic revision --autogenerate -m \"add domicilio feature\")"
     ]
   }
 }

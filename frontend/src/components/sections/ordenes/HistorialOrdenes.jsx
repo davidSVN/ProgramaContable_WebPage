@@ -51,11 +51,21 @@ function Badge({ value, cfg }) {
   return <span className={`ho-badge ${c.cls}`}>{c.label}</span>;
 }
 
+function _domicilioEstadoKey(estado) {
+  if (!estado) return 'gray';
+  if (estado === 'Pendiente') return 'pending';
+  if (estado === 'En camino recogida') return 'amber';
+  if (estado === 'Recogido') return 'blue';
+  if (estado === 'En camino entrega') return 'orange';
+  if (estado === 'Entregado') return 'green';
+  return 'gray';
+}
+
 // ── Skeleton rows ─────────────────────────────────────────────────────────────
 function SkeletonRows() {
   return Array.from({ length: 6 }).map((_, i) => (
     <tr key={i} className="ho-skel-row">
-      {Array.from({ length: 16 }).map((__, j) => (
+      {Array.from({ length: 17 }).map((__, j) => (
         <td key={j}><span className="ho-skel" style={{ width: `${50 + ((i * 3 + j * 7) % 40)}%` }} /></td>
       ))}
     </tr>
@@ -874,6 +884,7 @@ export default function HistorialOrdenes({ user, onNavigate }) {
               <th className="ho-th">Días</th>
               <th className="ho-th">Estado Orden</th>
               <th className="ho-th">Estado Pago</th>
+              <th className="ho-th">Domicilio</th>
               <th className="ho-th ho-th--sortable" onClick={() => handleSort('user_name')}>
                 Nombre / Institución <SortIcon field="user_name" />
               </th>
@@ -893,7 +904,7 @@ export default function HistorialOrdenes({ user, onNavigate }) {
               <SkeletonRows />
             ) : orders.length === 0 ? (
               <tr>
-                <td colSpan={12}>
+                <td colSpan={13}>
                   <div className="ho-empty">
                     <div className="ho-empty-icon">🗂️</div>
                     <p className="ho-empty-title">No se encontraron órdenes</p>
@@ -963,6 +974,20 @@ export default function HistorialOrdenes({ user, onNavigate }) {
                   </td>
                   <td className="ho-td">
                     <Badge value={o.estado_pago} cfg={PAGO_CFG} />
+                  </td>
+                  <td className="ho-td ho-td--domicilio" onClick={e => e.stopPropagation()}>
+                    {o.is_domicilio ? (
+                      <div className="ho-domicilio-cell">
+                        <span className="ho-badge ho-badge--domicilio">🛵 Domicilio</span>
+                        {o.domicilio?.estado_domicilio && (
+                          <span className={`ho-badge ho-badge--dom-${_domicilioEstadoKey(o.domicilio.estado_domicilio)}`}>
+                            {o.domicilio.estado_domicilio}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="ho-na">—</span>
+                    )}
                   </td>
                   <td className="ho-td ho-td--client">
                     {o.is_institute && <span className="ho-b2b-icon">🏢</span>}

@@ -288,6 +288,50 @@ class AbonoInicial(BaseModel):
     metodo_pago: str                 # "Efectivo" | "Nequi" | "Transferencia"
 
 
+class DomicilioCreate(BaseModel):
+    direccion_recogida: str
+    direccion_entrega:  str
+    fecha_recogida:     Optional[datetime] = None
+    hora_recogida:      Optional[str] = None
+    fecha_entrega:      Optional[datetime] = None
+    hora_entrega:       Optional[str] = None
+    nombre_receptor:    Optional[str] = None
+    empleado_id:        Optional[int] = None
+    notas:              Optional[str] = None
+
+
+class DomicilioUpdate(BaseModel):
+    direccion_recogida:  Optional[str] = None
+    direccion_entrega:   Optional[str] = None
+    fecha_recogida:      Optional[datetime] = None
+    hora_recogida:       Optional[str] = None
+    fecha_entrega:       Optional[datetime] = None
+    hora_entrega:        Optional[str] = None
+    nombre_receptor:     Optional[str] = None
+    empleado_id:         Optional[int] = None
+    empleado_nombre:     Optional[str] = None
+    estado_domicilio:    Optional[str] = None
+    notas:               Optional[str] = None
+
+
+class DomicilioResponse(BaseModel):
+    id:                  int
+    order_id:            int
+    direccion_recogida:  str
+    direccion_entrega:   str
+    fecha_recogida:      Optional[datetime] = None
+    hora_recogida:       Optional[str] = None
+    fecha_entrega:       Optional[datetime] = None
+    hora_entrega:        Optional[str] = None
+    nombre_receptor:     Optional[str] = None
+    empleado_id:         Optional[int] = None
+    empleado_nombre:     Optional[str] = None
+    estado_domicilio:    str
+    notas:               Optional[str] = None
+    created_at:          datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
 class OrdenCreate(BaseModel):
     user_id: int
     servicios_data: _List[ItemOrdenCreate]
@@ -299,6 +343,8 @@ class OrdenCreate(BaseModel):
     # Si state_payment == "Pagada" → se registra el total con el método
     # del primer elemento de pagos o "Efectivo" si pagos está vacío.
     state_state: str = "En progreso"
+    is_domicilio: bool = False
+    domicilio: Optional[DomicilioCreate] = None
 
 
 class ActualizarEstadoRequest(BaseModel):
@@ -478,7 +524,19 @@ class OrderHistorialItem(BaseModel):
     invoice_delivered: Optional[bool] = None
     has_signature: bool = False
 
+    # Domicilio info
+    is_domicilio: bool = False
+    domicilio: Optional[DomicilioResponse] = None
+
     model_config = ConfigDict(from_attributes=True)
+
+
+class DomicilioStatsResponse(BaseModel):
+    total: int
+    pendientes: int
+    en_camino: int
+    entregados: int
+    sin_asignar: int
 
 
 class OrderHistorialResponse(BaseModel):

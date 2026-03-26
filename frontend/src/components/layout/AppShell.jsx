@@ -9,6 +9,7 @@ import IAReportes from '../sections/IAReportes';
 import NuevaOrden from '../sections/NuevaOrden';
 import B2BOrdenes from '../sections/ordenes/B2BOrdenes';
 import HistorialOrdenes from '../sections/ordenes/HistorialOrdenes';
+import Domicilios from '../sections/ordenes/Domicilios';
 import GastosNegocio from '../sections/ordenes/GastosNegocio';
 import OrdenesPorCobrar from '../sections/ordenes/OrdenesPorCobrar';
 import ServiciosAgencia from '../sections/ordenes/ServiciosAgencia';
@@ -26,6 +27,7 @@ const SECTIONS = {
   'nueva-orden': NuevaOrden,
   'b2b-ordenes': B2BOrdenes,
   'historial-ordenes':  HistorialOrdenes,
+  'domicilios':         Domicilios,
   'servicios-ordenes':  ServiciosPorOrdenes,
   'gastos-negocio':     GastosNegocio,
   'facturas-cobrar': OrdenesPorCobrar,

@@ -119,8 +119,8 @@ function DonutChart({ data, loading }) {
   }
 
   const R = 55, CX = 110, CY = 110;
+  const STROKE = 30;           // ancho del anillo → determina el tamaño del hueco
   const CIRC = 2 * Math.PI * R;
-  const GAP = 0; // Solid pie shouldn't have gaps
 
   const entries = Object.entries(data || {})
     .filter(([, v]) => v > 0)
@@ -138,12 +138,13 @@ function DonutChart({ data, loading }) {
     );
   }
 
-  let acc = 0;
-  const segs = entries.map(([cat, val], idx) => {
-    const frac = val / total;
-    const dash = Math.max(0, frac * CIRC);
-    const off  = CIRC * 0.25 - acc;
-    acc += frac * CIRC;
+  // Calcular segmentos con método estándar de donut:
+  // offset = CIRC - acumulado (los segmentos van girando)
+  let accumulated = 0;
+  const segs = entries.map(([cat, val]) => {
+    const dash = (val / total) * CIRC;
+    const off  = CIRC - accumulated;
+    accumulated += dash;
     return { cat, val, dash, off };
   });
 
@@ -151,29 +152,29 @@ function DonutChart({ data, loading }) {
     <div className="gn-chart-panel">
       <div className={`gn-donut-anim${ready ? ' gn-donut-anim--in' : ''}`}>
         <svg viewBox="0 0 220 220" width={220} height={220} className="gn-donut-svg" aria-label="Gráfico de gastos por categoría">
-          {/* Track */}
-          <circle cx={CX} cy={CY} r={R} fill="none" stroke="#EDE9E0" strokeWidth={110} />
-          {/* Segments */}
-          {segs.map(({ cat, dash, off }) => (
-            <circle
-              key={cat}
-              cx={CX} cy={CY} r={R}
-              fill="none"
-              stroke={catColor(cat)}
-              strokeWidth={110}
-              strokeDasharray={`${dash} ${CIRC}`}
-              strokeDashoffset={off}
-              style={{
-                opacity: hovered && hovered !== cat ? 0.3 : 1,
-                transform: hovered === cat ? 'scale(1.02)' : 'none',
-                transformOrigin: '110px 110px',
-                transition: 'transform 180ms ease, opacity 180ms ease',
-                cursor: 'pointer',
-              }}
-              onMouseEnter={() => setHovered(cat)}
-              onMouseLeave={() => setHovered(null)}
-            />
-          ))}
+          {/* Track (anillo de fondo) */}
+          <circle cx={CX} cy={CY} r={R} fill="none" stroke="#EDE9E0" strokeWidth={STROKE} />
+          {/* Segmentos: rotamos -90° para que el primer segmento empiece arriba */}
+          <g transform={`rotate(-90, ${CX}, ${CY})`}>
+            {segs.map(({ cat, dash, off }) => (
+              <circle
+                key={cat}
+                cx={CX} cy={CY} r={R}
+                fill="none"
+                stroke={catColor(cat)}
+                strokeWidth={STROKE}
+                strokeDasharray={`${dash} ${CIRC}`}
+                strokeDashoffset={off}
+                style={{
+                  opacity: hovered && hovered !== cat ? 0.3 : 1,
+                  transition: 'opacity 180ms ease',
+                  cursor: 'pointer',
+                }}
+                onMouseEnter={() => setHovered(cat)}
+                onMouseLeave={() => setHovered(null)}
+              />
+            ))}
+          </g>
         </svg>
       </div>
 
