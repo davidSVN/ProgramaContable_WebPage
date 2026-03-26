@@ -10,6 +10,7 @@ import {
   crearOrdenB2B,
 } from '../../services/nuevaOrden';
 import { api } from '../../services/api';
+import { getAppUsers } from '../../services/appUsers';
 import PrintInvoice from '../ui/PrintInvoice';
 import { printOrden, buildPrintPayload } from '../../services/print';
 import { sendMessage, useWhatsApp } from '../../whatsapp';
@@ -583,6 +584,127 @@ function ServiceSearchInput({ services, onAddItem, abbreviations = {} }) {
   );
 }
 
+/* ── Domicilio Form ──────────────────────────────────────────── */
+function DomicilioForm({ domicilio, onChange, empleados }) {
+  const set = (key, val) => onChange({ ...domicilio, [key]: val });
+
+  return (
+    <div className="no-domicilio-form">
+      <div className="no-domicilio-row">
+        <div className="no-domicilio-field no-domicilio-field--full">
+          <label className="no-domicilio-label">📍 Dirección de recogida *</label>
+          <input
+            className="no-domicilio-input"
+            type="text"
+            placeholder="Dirección de recogida"
+            value={domicilio.direccion_recogida}
+            onChange={e => set('direccion_recogida', e.target.value)}
+            required
+          />
+        </div>
+      </div>
+
+      <div className="no-domicilio-row">
+        <div className="no-domicilio-field no-domicilio-field--full">
+          <label className="no-domicilio-label">📍 Dirección de entrega *</label>
+          <input
+            className="no-domicilio-input"
+            type="text"
+            placeholder="Dirección de entrega"
+            value={domicilio.direccion_entrega}
+            onChange={e => set('direccion_entrega', e.target.value)}
+            required
+          />
+        </div>
+      </div>
+
+      <div className="no-domicilio-row no-domicilio-row--2col">
+        <div className="no-domicilio-field">
+          <label className="no-domicilio-label">📅 Fecha recogida</label>
+          <input
+            className="no-domicilio-input"
+            type="date"
+            value={domicilio.fecha_recogida}
+            onChange={e => set('fecha_recogida', e.target.value)}
+          />
+        </div>
+        <div className="no-domicilio-field">
+          <label className="no-domicilio-label">⏰ Hora recogida</label>
+          <input
+            className="no-domicilio-input"
+            type="time"
+            value={domicilio.hora_recogida}
+            onChange={e => set('hora_recogida', e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="no-domicilio-row no-domicilio-row--2col">
+        <div className="no-domicilio-field">
+          <label className="no-domicilio-label">📅 Fecha entrega</label>
+          <input
+            className="no-domicilio-input"
+            type="date"
+            value={domicilio.fecha_entrega}
+            onChange={e => set('fecha_entrega', e.target.value)}
+          />
+        </div>
+        <div className="no-domicilio-field">
+          <label className="no-domicilio-label">⏰ Hora entrega</label>
+          <input
+            className="no-domicilio-input"
+            type="time"
+            value={domicilio.hora_entrega}
+            onChange={e => set('hora_entrega', e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="no-domicilio-row">
+        <div className="no-domicilio-field no-domicilio-field--full">
+          <label className="no-domicilio-label">👤 Nombre receptor</label>
+          <input
+            className="no-domicilio-input"
+            type="text"
+            placeholder="Nombre de quien recibe"
+            value={domicilio.nombre_receptor}
+            onChange={e => set('nombre_receptor', e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="no-domicilio-row">
+        <div className="no-domicilio-field no-domicilio-field--full">
+          <label className="no-domicilio-label">👷 Empleado asignado</label>
+          <select
+            className="no-domicilio-input"
+            value={domicilio.empleado_id || ''}
+            onChange={e => set('empleado_id', e.target.value ? Number(e.target.value) : null)}
+          >
+            <option value="">Seleccionar empleado...</option>
+            {(empleados || []).map(emp => (
+              <option key={emp.id} value={emp.id}>{emp.username}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="no-domicilio-row">
+        <div className="no-domicilio-field no-domicilio-field--full">
+          <label className="no-domicilio-label">📝 Notas del domicilio</label>
+          <input
+            className="no-domicilio-input"
+            type="text"
+            placeholder="Observaciones, indicaciones especiales..."
+            value={domicilio.notas}
+            onChange={e => set('notas', e.target.value)}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Items Table ────────────────────────────────────────────── */
 function ItemsTable({ items, onUpdate, onRemove }) {
   if (items.length === 0) {
@@ -986,6 +1108,16 @@ export default function NuevaOrden() {
 
   // ── Quick add (kept for reference; shortcuts wired via ServiceSearchInput) ──
 
+  // ── Domicilio ─────────────────────────────────────────────
+  const [isDomicilio, setIsDomicilio]   = useState(false);
+  const [domicilioData, setDomicilioData] = useState({
+    direccion_recogida: '', direccion_entrega: '',
+    fecha_recogida: '', hora_recogida: '',
+    fecha_entrega: '', hora_entrega: '',
+    nombre_receptor: '', empleado_id: null, notas: '',
+  });
+  const [empleados, setEmpleados] = useState([]);
+
   // ── Delivery options ──────────────────────────────────────
   const [deliveryPrint, setDeliveryPrint]       = useState(true);
   const [deliveryWhatsApp, setDeliveryWhatsApp] = useState(false);
@@ -1026,11 +1158,15 @@ export default function NuevaOrden() {
   const paymentOverflow = paymentStatus === 'Debe' && totalAbono > total + 0.5;
 
   const hasExtraWithoutDesc = items.some(i => i.is_extra && !i.description.trim());
+  const domicilioMissingFields = isDomicilio && (
+    !domicilioData.direccion_recogida.trim() || !domicilioData.direccion_entrega.trim()
+  );
   const canSubmit =
     !!selectedClient &&
     items.filter(i => !i.is_discount).length > 0 &&
     !hasExtraWithoutDesc &&
     !paymentOverflow &&
+    !domicilioMissingFields &&
     !isCreating;
 
   const disabledReason = !selectedClient
@@ -1041,6 +1177,8 @@ export default function NuevaOrden() {
     ? 'Completa la descripción del servicio extra'
     : paymentOverflow
     ? 'El abono supera el total de la orden'
+    : domicilioMissingFields
+    ? 'Completa las direcciones del domicilio'
     : null;
 
   // ── Toast ─────────────────────────────────────────────────
@@ -1077,6 +1215,13 @@ export default function NuevaOrden() {
       setServicesLoading(false);
     }
   }, []);
+
+  // ── Load empleados for domicilio dropdown ─────────────────
+  useEffect(() => {
+    getAppUsers({ limit: 100 })
+      .then(data => setEmpleados(Array.isArray(data) ? data : (data?.items ?? [])))
+      .catch(() => setEmpleados([]));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Initial load ──────────────────────────────────────────
   useEffect(() => {
@@ -1122,6 +1267,16 @@ export default function NuevaOrden() {
   }, [canSubmit]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Reset form ────────────────────────────────────────────
+  const resetDomicilio = useCallback(() => {
+    setIsDomicilio(false);
+    setDomicilioData({
+      direccion_recogida: '', direccion_entrega: '',
+      fecha_recogida: '', hora_recogida: '',
+      fecha_entrega: '', hora_entrega: '',
+      nombre_receptor: '', empleado_id: null, notas: '',
+    });
+  }, []);
+
   const resetForm = useCallback(() => {
     setClientSearch('');
     setSelectedClient(null);
@@ -1133,7 +1288,8 @@ export default function NuevaOrden() {
     setSingleMethod('Efectivo');
     setPayments(initPayments());
     setShowFidelityBanner(false);
-  }, []);
+    resetDomicilio();
+  }, [resetDomicilio]);
 
   // ── Mode switch ───────────────────────────────────────────
   const handleModeSwitch = (newMode) => {
@@ -1322,6 +1478,18 @@ export default function NuevaOrden() {
               .filter(p => p.enabled && parseFloat(p.amount) > 0)
               .map(p => ({ monto: parseFloat(p.amount), metodo_pago: p.method }));
 
+        const domicilioPayload = isDomicilio ? {
+          direccion_recogida: domicilioData.direccion_recogida,
+          direccion_entrega: domicilioData.direccion_entrega,
+          fecha_recogida: domicilioData.fecha_recogida || null,
+          hora_recogida: domicilioData.hora_recogida || null,
+          fecha_entrega: domicilioData.fecha_entrega || null,
+          hora_entrega: domicilioData.hora_entrega || null,
+          nombre_receptor: domicilioData.nombre_receptor || null,
+          empleado_id: domicilioData.empleado_id || null,
+          notas: domicilioData.notas || null,
+        } : null;
+
         result = await crearOrdenB2C({
           user_id: selectedClient.user_id,
           servicios_data: serviciosData,
@@ -1330,6 +1498,8 @@ export default function NuevaOrden() {
           discount_value: discountVal,
           pagos,
           state_state: 'En progreso',
+          is_domicilio: isDomicilio,
+          domicilio: domicilioPayload,
         });
       } else {
         const abonoMethod = paymentStatus === 'Pagada'
@@ -1514,6 +1684,32 @@ export default function NuevaOrden() {
                 </div>
               </div>
             </div>
+          )}
+        </div>
+
+        {/* Zone 3b: Domicilio Toggle */}
+        <div className="no-card no-card--domicilio">
+          <div className="no-domicilio-toggle-row">
+            <span className="no-domicilio-toggle-label">🛵 ¿Es un domicilio?</span>
+            <button
+              type="button"
+              className={`no-domicilio-switch${isDomicilio ? ' no-domicilio-switch--on' : ''}`}
+              onClick={() => setIsDomicilio(v => !v)}
+              aria-pressed={isDomicilio}
+              aria-label="Activar domicilio"
+            >
+              <span className="no-domicilio-switch__track" />
+              <span className="no-domicilio-switch__thumb" />
+              <span className="no-domicilio-switch__label">{isDomicilio ? 'ON' : 'OFF'}</span>
+            </button>
+          </div>
+
+          {isDomicilio && (
+            <DomicilioForm
+              domicilio={domicilioData}
+              onChange={setDomicilioData}
+              empleados={empleados}
+            />
           )}
         </div>
 

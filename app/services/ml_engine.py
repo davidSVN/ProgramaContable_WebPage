@@ -66,10 +66,13 @@ class MLEngine:
             ticket_promedio = float(np.nan_to_num(grupo["total_amount"].mean(), nan=0.0))
             varianza_ticket = float(np.nan_to_num(grupo["total_amount"].std(), nan=0.0))
             ultimo_pedido = pd.to_datetime(grupo["created_at"].iloc[-1])
-            dias_sin_orden = (hoy - ultimo_pedido.to_pydatetime()).days
+            # Ensure naive for comparison with hoy
+            ultimo_pedido_naive = ultimo_pedido.to_pydatetime().replace(tzinfo=None)
+            dias_sin_orden = (hoy - ultimo_pedido_naive).days
 
             if total_ordenes > 1:
                 fechas = pd.to_datetime(grupo["created_at"])
+                # diff() on aware Series works, but output timedelta is same
                 deltas = fechas.diff().dropna().dt.days
                 frecuencia_promedio_dias = float(deltas.mean()) if not deltas.empty else 30.0
             else:
@@ -80,10 +83,13 @@ class MLEngine:
             # Trend: compare last 30 days vs previous 30 days
             corte = hoy - timedelta(days=30)
             corte_anterior = hoy - timedelta(days=60)
-            recientes = grupo[pd.to_datetime(grupo["created_at"]) >= corte]
+            
+            # Ensure created_at is naive for comparison with corte
+            grupo_created_at = pd.to_datetime(grupo["created_at"]).dt.tz_localize(None)
+            recientes = grupo[grupo_created_at >= corte]
             anteriores = grupo[
-                (pd.to_datetime(grupo["created_at"]) >= corte_anterior) &
-                (pd.to_datetime(grupo["created_at"]) < corte)
+                (grupo_created_at >= corte_anterior) &
+                (grupo_created_at < corte)
             ]
             if len(recientes) > len(anteriores):
                 tendencia = "creciendo"
@@ -179,7 +185,7 @@ class MLEngine:
                 dias_sin_orden=dias_sin_orden,
                 total_ordenes=int(total_ordenes),
                 total_gastado=float(np.nan_to_num(round(total_gastado, 0), nan=0.0)),
-                ultimo_pedido=ultimo_pedido.to_pydatetime() if ultimo_pedido else None,
+                ultimo_pedido=ultimo_pedido_naive,
                 segmento_rfm=segmento_rfm,
                 descuento_sugerido=descuento_sugerido,
                 razon_descuento=razon_descuento,
@@ -243,7 +249,9 @@ class MLEngine:
         def filtrar(df, col, inicio, fin):
             if df.empty:
                 return df
-            mask = (pd.to_datetime(df[col]) >= inicio) & (pd.to_datetime(df[col]) <= fin)
+            # Convert series to naive to match inicio/fin inputs
+            series_naive = pd.to_datetime(df[col]).dt.tz_localize(None)
+            mask = (series_naive >= inicio) & (series_naive <= fin)
             return df[mask]
 
         # Current period
@@ -325,7 +333,8 @@ class MLEngine:
         if orders_df.empty:
             return {"meses": []}
 
-        orders_df["mes"] = pd.to_datetime(orders_df["created_at"]).dt.to_period("M")
+        # Ensure naive for frequency conversion
+        orders_df["mes"] = pd.to_datetime(orders_df["created_at"]).dt.tz_localize(None).dt.to_period("M")
         meses = sorted(orders_df["mes"].unique())[-6:]
 
         resultado = []

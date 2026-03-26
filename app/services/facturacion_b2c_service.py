@@ -377,7 +377,7 @@ async def crear_orden(
             if s.get("is_agency"):
                 svc_name = s.get("name", "Servicio")
                 # Truncar para evitar DataError en spent_general_name (max 100)
-                nombre_gasto = f"Orden #{orden.id} - {svc_name} (Agencia)"[:100]
+                nombre_gasto = f"Orden #{next_order_number} - {svc_name} (Agencia)"[:100]
                 
                 gasto_agencia = SpentBusiness(
                     tenant_id            = tenant_id,
@@ -386,7 +386,7 @@ async def crear_orden(
                     spent_general_name   = nombre_gasto,
                     spent_payment_method = "Nequi",
                     spent_value          = s["spent_per_service"],
-                    description          = f"Costo automático para {svc_name} en orden #{orden.id} - Cliente: {nombre_usuario}"
+                    description          = f"Costo automático para {svc_name} en orden #{next_order_number} - Cliente: {nombre_usuario}"
                 )
                 db.add(gasto_agencia)
 
@@ -597,12 +597,23 @@ async def eliminar_orden(
     db: AsyncSession, tenant_id: int, order_id: int
 ) -> "bool | str":
     """Elimina una orden B2C. Falla si pertenece a una factura consolidada B2B."""
-    stmt_eo = select(OrderHeader).where(OrderHeader.id == order_id)
-    if tenant_id is not None:
-        stmt_eo = stmt_eo.where(OrderHeader.tenant_id == tenant_id)
-        
+    # Buscar por id (PK) primero; si no existe, intentar por order_number
+    stmt_eo = select(OrderHeader).where(
+        OrderHeader.id == order_id,
+        OrderHeader.tenant_id == tenant_id,
+    ) if tenant_id is not None else select(OrderHeader).where(OrderHeader.id == order_id)
+
     res = await db.execute(stmt_eo)
     orden = res.scalars().first()
+
+    # Si no encontró por id, intentar por order_number
+    if not orden:
+        stmt_eo2 = select(OrderHeader).where(OrderHeader.order_number == order_id)
+        if tenant_id is not None:
+            stmt_eo2 = stmt_eo2.where(OrderHeader.tenant_id == tenant_id)
+        res2 = await db.execute(stmt_eo2)
+        orden = res2.scalars().first()
+
     if not orden:
         return f"Orden #{order_id} no encontrada."
 
@@ -611,6 +622,18 @@ async def eliminar_orden(
         return "consolidada"  # el router detecta esta palabra clave → 409
 
     try:
+        # Eliminar gastos de agencia vinculados a esta orden (generados automáticamente)
+        prefix = f"Orden #{orden.order_number} -"
+        stmt_gastos = select(SpentBusiness).where(
+            SpentBusiness.tenant_id == tenant_id,
+            SpentBusiness.spent_category == "Agencia",
+            SpentBusiness.spent_general_name.like(f"{prefix}%"),
+        )
+        res_gastos = await db.execute(stmt_gastos)
+        gastos_agencia = res_gastos.scalars().all()
+        for g in gastos_agencia:
+            await db.delete(g)
+
         await db.delete(orden)
         await db.commit()
         return True

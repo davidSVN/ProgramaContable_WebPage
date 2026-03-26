@@ -35,6 +35,7 @@ const NAV = [
     group: true,
     children: [
       { id: 'historial-ordenes',  label: 'Historial de Órdenes',   emoji: '🕐' },
+      { id: 'domicilios',         label: 'Domicilios',             emoji: '🛵' },
       { id: 'servicios-ordenes',  label: 'Servicios por Órdenes',  emoji: '📋' },
       { id: 'facturas-cobrar',    label: 'Facturas por Cobrar',    emoji: '🧾' },
       { id: 'servicios-terceros', label: 'Servicios en Agencia',   emoji: '📤' },

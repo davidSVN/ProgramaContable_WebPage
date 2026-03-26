@@ -457,6 +457,23 @@
 .ho-badge--blue   { background: rgba(43,127,255,0.12); color: #2B7FFF; }
 .ho-badge--purple { background: rgba(155,93,255,0.12); color: #9B5DFF; }
 
+/* Domicilio column badges */
+.ho-badge--domicilio      { background: #E3F2FD; color: #0D47A1; }
+.ho-badge--dom-pending    { background: #F1EFE8; color: #5F5E5A; }
+.ho-badge--dom-amber      { background: #FFF8E1; color: #F57F17; }
+.ho-badge--dom-blue       { background: #E3F2FD; color: #0D47A1; }
+.ho-badge--dom-orange     { background: #FFF0E8; color: #CC4A12; }
+.ho-badge--dom-green      { background: #E8F5E9; color: #2E7D32; }
+.ho-badge--dom-gray       { background: #F1EFE8; color: #5F5E5A; }
+
+.ho-domicilio-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 100px;
+}
+.ho-td--domicilio { min-width: 110px; }
+
 /* ── Misc table values ─────────────────────────────────────────────────────── */
 .ho-invoice-link { color: var(--ds-accent); font-weight: 700; cursor: pointer; font-size: 0.8rem; }
 .ho-invoice-link:hover { opacity: 0.7; }

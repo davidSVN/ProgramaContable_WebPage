@@ -15,6 +15,10 @@ from app.schemas import (
     ActualizarEstadoRequest,
     ClienteSearchResponse,
     DetalleOrdenResponse,
+    DomicilioCreate,
+    DomicilioUpdate,
+    DomicilioResponse,
+    DomicilioStatsResponse,
     LaundryServiceResponse,
     OrdenCreate,
     OrdenResponse,
@@ -30,6 +34,12 @@ from datetime import datetime
 from app.services import facturacion_b2c_service as service
 from app.services import historial_service
 from app.services.facturacion_b2c_service import FiltrosOrden
+from pydantic import BaseModel as _PydanticBase
+
+
+class _EstadoDomicilioRequest(_PydanticBase):
+    estado_domicilio: str
+
 
 router = APIRouter()
 
@@ -114,6 +124,244 @@ async def obtener_estados_orden_unicos(
     )
     res = await db.execute(stmt)
     return [s for s in res.scalars().all() if s]
+
+
+# ── Domicilios ────────────────────────────────────────────────────────────────
+
+ESTADOS_DOMICILIO_VALIDOS = [
+    "Pendiente", "En camino recogida", "Recogido", "En camino entrega", "Entregado"
+]
+
+
+@router.get("/domicilios/stats", response_model=DomicilioStatsResponse)
+async def obtener_stats_domicilios(
+    db: AsyncSession = Depends(get_db),
+    current_user: AppUser = Depends(get_current_user),
+):
+    """Estadísticas de órdenes de domicilio para el tenant."""
+    from sqlalchemy import select as sa_select, func
+    from app.models import OrderHeader, DomicilioDetail
+
+    base = [
+        OrderHeader.tenant_id == current_user.tenant_id,
+        OrderHeader.is_domicilio == True,
+    ]
+
+    total_res = await db.execute(sa_select(func.count(OrderHeader.id)).where(*base))
+    total = total_res.scalar() or 0
+
+    pendientes_res = await db.execute(
+        sa_select(func.count(DomicilioDetail.id))
+        .join(OrderHeader, DomicilioDetail.order_id == OrderHeader.id)
+        .where(*base, DomicilioDetail.estado_domicilio == "Pendiente")
+    )
+    pendientes = pendientes_res.scalar() or 0
+
+    en_camino_res = await db.execute(
+        sa_select(func.count(DomicilioDetail.id))
+        .join(OrderHeader, DomicilioDetail.order_id == OrderHeader.id)
+        .where(*base, DomicilioDetail.estado_domicilio.in_(["En camino recogida", "Recogido", "En camino entrega"]))
+    )
+    en_camino = en_camino_res.scalar() or 0
+
+    entregados_res = await db.execute(
+        sa_select(func.count(DomicilioDetail.id))
+        .join(OrderHeader, DomicilioDetail.order_id == OrderHeader.id)
+        .where(*base, DomicilioDetail.estado_domicilio == "Entregado")
+    )
+    entregados = entregados_res.scalar() or 0
+
+    sin_asignar_res = await db.execute(
+        sa_select(func.count(DomicilioDetail.id))
+        .join(OrderHeader, DomicilioDetail.order_id == OrderHeader.id)
+        .where(*base, DomicilioDetail.empleado_id == None)
+    )
+    sin_asignar = sin_asignar_res.scalar() or 0
+
+    return DomicilioStatsResponse(
+        total=total,
+        pendientes=pendientes,
+        en_camino=en_camino,
+        entregados=entregados,
+        sin_asignar=sin_asignar,
+    )
+
+
+@router.get("/domicilios", response_model=OrderHistorialResponse)
+async def listar_domicilios(
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=15, ge=1, le=100),
+    estado_domicilio: Optional[str] = Query(default=None),
+    empleado_id: Optional[int] = Query(default=None),
+    cliente: Optional[str] = Query(default=None),
+    desde: Optional[date] = Query(default=None),
+    hasta: Optional[date] = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    current_user: AppUser = Depends(get_current_user),
+):
+    """Lista todas las órdenes de domicilio del tenant con filtros y paginación."""
+    return await historial_service.obtener_historial(
+        db=db,
+        tenant_id=current_user.tenant_id,
+        page=page,
+        limit=limit,
+        cliente=cliente,
+        desde=desde,
+        hasta=hasta,
+        is_domicilio=True,
+        estado_domicilio=estado_domicilio,
+        empleado_id=empleado_id,
+    )
+
+
+@router.get("/{order_id}/domicilio", response_model=DomicilioResponse)
+async def obtener_domicilio(
+    order_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: AppUser = Depends(get_current_user),
+):
+    """Obtiene el detalle de domicilio de una orden."""
+    from sqlalchemy import select as sa_select
+    from app.models import OrderHeader, DomicilioDetail
+
+    res = await db.execute(
+        sa_select(DomicilioDetail)
+        .join(OrderHeader, DomicilioDetail.order_id == OrderHeader.id)
+        .where(DomicilioDetail.order_id == order_id, OrderHeader.tenant_id == current_user.tenant_id)
+    )
+    dom = res.scalars().first()
+    if not dom:
+        raise HTTPException(status_code=404, detail="Domicilio no encontrado para esta orden")
+    return dom
+
+
+@router.post("/{order_id}/domicilio", response_model=DomicilioResponse, status_code=status.HTTP_201_CREATED)
+async def crear_domicilio(
+    order_id: int,
+    data: DomicilioCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: AppUser = Depends(get_current_user),
+):
+    """Crea un domicilio para una orden existente y marca la orden como is_domicilio=True."""
+    from sqlalchemy import select as sa_select
+    from app.models import OrderHeader, DomicilioDetail
+
+    res = await db.execute(
+        sa_select(OrderHeader).where(
+            OrderHeader.id == order_id,
+            OrderHeader.tenant_id == current_user.tenant_id,
+        )
+    )
+    orden = res.scalars().first()
+    if not orden:
+        raise HTTPException(status_code=404, detail="Orden no encontrada")
+
+    existing = await db.execute(
+        sa_select(DomicilioDetail).where(DomicilioDetail.order_id == order_id)
+    )
+    if existing.scalars().first():
+        raise HTTPException(status_code=409, detail="Esta orden ya tiene un domicilio registrado")
+
+    # Resolve empleado_nombre if empleado_id provided
+    empleado_nombre = None
+    if data.empleado_id:
+        from app.models import AppUser as AppUserModel
+        emp_res = await db.execute(
+            sa_select(AppUserModel).where(AppUserModel.id == data.empleado_id)
+        )
+        emp = emp_res.scalars().first()
+        empleado_nombre = emp.username if emp else None
+
+    dom = DomicilioDetail(
+        tenant_id=current_user.tenant_id,
+        order_id=order_id,
+        direccion_recogida=data.direccion_recogida,
+        direccion_entrega=data.direccion_entrega,
+        fecha_recogida=data.fecha_recogida,
+        hora_recogida=data.hora_recogida,
+        fecha_entrega=data.fecha_entrega,
+        hora_entrega=data.hora_entrega,
+        nombre_receptor=data.nombre_receptor,
+        empleado_id=data.empleado_id,
+        empleado_nombre=empleado_nombre,
+        notas=data.notas,
+    )
+    orden.is_domicilio = True
+    db.add(dom)
+    await db.commit()
+    await db.refresh(dom)
+    return dom
+
+
+@router.put("/{order_id}/domicilio", response_model=DomicilioResponse)
+async def actualizar_domicilio(
+    order_id: int,
+    data: DomicilioUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: AppUser = Depends(get_current_user),
+):
+    """Actualiza el domicilio de una orden."""
+    from sqlalchemy import select as sa_select
+    from app.models import OrderHeader, DomicilioDetail
+
+    res = await db.execute(
+        sa_select(DomicilioDetail)
+        .join(OrderHeader, DomicilioDetail.order_id == OrderHeader.id)
+        .where(DomicilioDetail.order_id == order_id, OrderHeader.tenant_id == current_user.tenant_id)
+    )
+    dom = res.scalars().first()
+    if not dom:
+        raise HTTPException(status_code=404, detail="Domicilio no encontrado")
+
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(dom, field, value)
+
+    # Resolve empleado_nombre if empleado_id updated
+    if data.empleado_id is not None and data.empleado_nombre is None:
+        from app.models import AppUser as AppUserModel
+        emp_res = await db.execute(
+            sa_select(AppUserModel).where(AppUserModel.id == data.empleado_id)
+        )
+        emp = emp_res.scalars().first()
+        if emp:
+            dom.empleado_nombre = emp.username
+
+    await db.commit()
+    await db.refresh(dom)
+    return dom
+
+
+@router.patch("/{order_id}/domicilio/estado", response_model=DomicilioResponse)
+async def actualizar_estado_domicilio(
+    order_id: int,
+    body: _EstadoDomicilioRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: AppUser = Depends(get_current_user),
+):
+    """Cambia el estado del domicilio."""
+    from sqlalchemy import select as sa_select
+    from app.models import OrderHeader, DomicilioDetail
+
+    estado = body.estado_domicilio
+    if estado not in ESTADOS_DOMICILIO_VALIDOS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Estado inválido. Válidos: {ESTADOS_DOMICILIO_VALIDOS}",
+        )
+
+    res = await db.execute(
+        sa_select(DomicilioDetail)
+        .join(OrderHeader, DomicilioDetail.order_id == OrderHeader.id)
+        .where(DomicilioDetail.order_id == order_id, OrderHeader.tenant_id == current_user.tenant_id)
+    )
+    dom = res.scalars().first()
+    if not dom:
+        raise HTTPException(status_code=404, detail="Domicilio no encontrado")
+
+    dom.estado_domicilio = estado
+    await db.commit()
+    await db.refresh(dom)
+    return dom
 
 
 # ── 1. GET /ordenes/servicios ─────────────────────────────────────────────────
@@ -396,6 +644,46 @@ async def crear_orden(
     )
     if isinstance(resultado, str):
         raise HTTPException(status_code=400, detail=resultado)
+
+    # Handle domicilio creation
+    if data.is_domicilio and data.domicilio:
+        from sqlalchemy import select as sa_select
+        from app.models import OrderHeader, DomicilioDetail
+
+        res = await db.execute(
+            sa_select(OrderHeader).where(OrderHeader.id == resultado.order_id)
+        )
+        orden_db = res.scalars().first()
+        if orden_db:
+            orden_db.is_domicilio = True
+
+            # Resolve empleado_nombre
+            empleado_nombre = None
+            if data.domicilio.empleado_id:
+                from app.models import AppUser as AppUserModel
+                emp_res = await db.execute(
+                    sa_select(AppUserModel).where(AppUserModel.id == data.domicilio.empleado_id)
+                )
+                emp = emp_res.scalars().first()
+                empleado_nombre = emp.username if emp else None
+
+            dom = DomicilioDetail(
+                tenant_id=current_user.tenant_id,
+                order_id=resultado.order_id,
+                direccion_recogida=data.domicilio.direccion_recogida,
+                direccion_entrega=data.domicilio.direccion_entrega,
+                fecha_recogida=data.domicilio.fecha_recogida,
+                hora_recogida=data.domicilio.hora_recogida,
+                fecha_entrega=data.domicilio.fecha_entrega,
+                hora_entrega=data.domicilio.hora_entrega,
+                nombre_receptor=data.domicilio.nombre_receptor,
+                empleado_id=data.domicilio.empleado_id,
+                empleado_nombre=empleado_nombre,
+                notas=data.domicilio.notas,
+            )
+            db.add(dom)
+            await db.commit()
+
     orden_dict = _orden_dto_to_dict(resultado)
     orden_dict["servicios_data"] = servicios_data
     return orden_dict
