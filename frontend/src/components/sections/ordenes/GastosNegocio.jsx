@@ -4,13 +4,14 @@ import {
   getGastosAgencia, getGastosAgenciaCount,
   createGasto, updateGasto, deleteGasto,
 } from '../../../services/gastos';
+import api from '../../../services/api';
 import './GastosNegocio.css';
 import { BlockedAction } from '../../ui/BlockedAction';
 
 /* ── Constants ─────────────────────────────────────────────────────────────── */
 const MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 const CATEGORIAS = ['Nómina','Servicios Públicos','Arriendo','Préstamos','Papelería','Publicidad','Otros'];
-const METODOS = ['Efectivo','Transferencia','Nequi','Daviplata','Tarjeta'];
+// Se elimina METODOS hardcodeado ya que ahora se carga del backend
 const CAT_COLORS = {
   'Nómina':             '#2B7FFF',
   'Servicios Públicos': '#0BC4E0',
@@ -319,6 +320,7 @@ export default function GastosNegocio({ user }) {
   const [newGasto, setNewGasto] = useState(EMPTY_FORM);
   const [newErrors,setNewErrors]= useState({});
   const [isAdding, setIsAdding] = useState(false);
+  const [availableChannels, setAvailableChannels] = useState([]);
 
   /* ── Agencia ────────────────────────────────────────────────────────────── */
   const [agencia,        setAgencia]        = useState([]);
@@ -392,6 +394,21 @@ export default function GastosNegocio({ user }) {
   useEffect(() => {
     fetchStats();
     fetchGastos(gastosFilters, gastosPag);
+    
+    // Fetch channels for dropdowns
+    const fetchChannels = async () => {
+      try {
+        const res = await api.get('/canales/saldos');
+        const active = res.filter(c => c.is_active);
+        setAvailableChannels(active);
+        if (active.length > 0) {
+          setNewGasto(v => ({ ...v, spent_payment_method: active[0].nombre }));
+        }
+      } catch (err) {
+        console.error('Error fetching channels:', err);
+      }
+    };
+    fetchChannels();
   }, []); // eslint-disable-line
 
   /* ── Tab switch ─────────────────────────────────────────────────────────── */
@@ -484,7 +501,7 @@ export default function GastosNegocio({ user }) {
       spent_category:       g.spent_category || '',
       spent_general_name:   g.spent_general_name || '',
       spent_value:          g.spent_value,
-      spent_payment_method: g.spent_payment_method || 'Efectivo',
+      spent_payment_method: g.spent_payment_method || (availableChannels[0]?.nombre || 'efectivo'),
     });
     setEditError(null);
     setDeletingId(null);
@@ -734,7 +751,7 @@ export default function GastosNegocio({ user }) {
                     <select className="gn-select gn-select--sm" value={gastosFilters.forma_pago}
                       onChange={e => updateGastosFilter('forma_pago', e.target.value)}>
                       <option value="">Todos</option>
-                      {METODOS.map(m => <option key={m} value={m}>{m}</option>)}
+                      {availableChannels.map(m => <option key={m.nombre} value={m.nombre}>{m.nombre}</option>)}
                     </select>
                   </div>
                   <div className="gn-filter-group">
@@ -820,7 +837,7 @@ export default function GastosNegocio({ user }) {
                                 ? <select className="gn-inline-select"
                                     value={editValues.spent_payment_method}
                                     onChange={e => setEditValues(v => ({ ...v, spent_payment_method: e.target.value }))}>
-                                    {METODOS.map(m => <option key={m} value={m}>{m}</option>)}
+                                    {availableChannels.map(m => <option key={m.nombre} value={m.nombre}>{m.nombre}</option>)}
                                   </select>
                                 : <MethodBadge val={g.spent_payment_method} />}
                             </td>

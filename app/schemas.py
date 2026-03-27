@@ -755,3 +755,67 @@ class PaymentHistoryResponse(BaseModel):
     transactions: list
     current_plan: str
     plan_expires_at: Optional[datetime] = None
+
+
+# ─── Canales de Pago ──────────────────────────────────────────────────────────
+
+class CanalPagoCreate(BaseModel):
+    nombre: str
+    tipo: str = "otro"
+    color: str = "#888780"
+    emoji: str = "💰"
+    orden: int = 0
+
+
+class CanalPagoUpdate(BaseModel):
+    nombre: Optional[str] = None
+    tipo: Optional[str] = None
+    color: Optional[str] = None
+    emoji: Optional[str] = None
+    is_active: Optional[bool] = None
+    orden: Optional[int] = None
+
+
+class CanalPagoResponse(BaseModel):
+    id: int
+    nombre: str
+    tipo: str
+    color: str
+    emoji: str
+    is_active: bool
+    orden: int
+
+    model_config = {"from_attributes": True}
+
+
+class TransferenciaCreate(BaseModel):
+    canal_origen: str
+    canal_destino: str
+    monto: float
+    fecha: Optional[datetime] = None
+    notas: Optional[str] = None
+
+
+class TransferenciaResponse(BaseModel):
+    id: int
+    canal_origen: str
+    canal_destino: str
+    monto: float
+    fecha: datetime
+    notas: Optional[str]
+    registrado_por: Optional[str]
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class CanalSaldoResponse(BaseModel):
+    canal: str
+    emoji: str
+    color: str
+    tipo: str
+    saldo_bruto: float
+    egresos: float
+    transferencias_in: float
+    transferencias_out: float
+    saldo_real: float  # = saldo_bruto - egresos + transferencias_in - transferencias_out

@@ -316,6 +316,40 @@ class DomicilioDetail(Base):
     empleado = relationship("AppUser", foreign_keys=[empleado_id])
 
 
+class CanalPago(Base):
+    """Custom payment channels defined by admin."""
+    __tablename__ = "canales_pago"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    tenant_id  = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
+    nombre     = Column(String(100), nullable=False)
+    tipo       = Column(String(50), default="otro")
+    color      = Column(String(20), default="#888780")
+    emoji      = Column(String(10), default="💰")
+    is_active  = Column(Boolean, default=True)
+    orden      = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    tenant     = relationship("Tenant")
+
+    __table_args__ = (UniqueConstraint("nombre", "tenant_id"),)
+
+
+class CanalTransferencia(Base):
+    """Records manual money transfers between channels."""
+    __tablename__ = "canal_transferencias"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    tenant_id      = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
+    canal_origen   = Column(String(100), nullable=False)
+    canal_destino  = Column(String(100), nullable=False)
+    monto          = Column(Float, nullable=False)
+    fecha          = Column(DateTime, default=datetime.utcnow)
+    notas          = Column(Text, nullable=True)
+    registrado_por = Column(String(100), nullable=True)
+    created_at     = Column(DateTime, default=datetime.utcnow)
+    tenant         = relationship("Tenant")
+
+
 class PaymentTransaction(Base):
     """Registra cada intento de pago vía Wompi."""
     __tablename__ = "payment_transactions"

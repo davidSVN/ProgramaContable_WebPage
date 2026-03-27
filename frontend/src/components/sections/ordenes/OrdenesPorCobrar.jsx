@@ -35,7 +35,7 @@ const buildPageNums = (page, totalPages) => {
   return [...nums].filter(n => n >= 1 && n <= totalPages).sort((a, b) => a - b);
 };
 
-const PAYMENT_METHODS = ['Efectivo', 'Nequi', 'Transferencia', 'Daviplata', 'Tarjeta'];
+// Se elimina PAYMENT_METHODS hardcodeado
 
 // ── Stat card with count-up animation ────────────────────────────────────────
 function StatCard({ icon, label, value, formatted, accent, loading, subtitle, subtitleColor }) {
@@ -131,6 +131,7 @@ export default function OrdenesPorCobrar({ user, onNavigate }) {
   const [paidRows, setPaidRows]         = useState(new Set());
   const [toast, setToast]               = useState(null);
   const [isSubmiting, setIsSubmiting] = useState(false);
+  const [availableChannels, setAvailableChannels] = useState([]);
 
   const handleWhatsAppClick = async (orden) => {
     if (!orden.user_contact) {
@@ -226,6 +227,16 @@ export default function OrdenesPorCobrar({ user, onNavigate }) {
   // ── Initial load ────────────────────────────────────────────────────────────
   useEffect(() => {
     fetchStats();
+    
+    const fetchChannels = async () => {
+      try {
+        const res = await api.get('/canales/saldos');
+        setAvailableChannels(res.filter(c => c.is_active));
+      } catch (err) {
+        console.error('Error fetching channels:', err);
+      }
+    };
+    fetchChannels();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -511,9 +522,11 @@ export default function OrdenesPorCobrar({ user, onNavigate }) {
                               value={payingMethod}
                               onChange={e => setPayingMethod(e.target.value)}
                             >
-                              {PAYMENT_METHODS.map(m => (
-                                <option key={m} value={m}>{m}</option>
+                              {availableChannels.map(m => (
+                                <option key={m.nombre} value={m.nombre}>{m.nombre}</option>
                               ))}
+                              {/* Always allow Cash/Efectivo as fallback if list is empty */}
+                              {availableChannels.length === 0 && <option value="efectivo">efectivo</option>}
                             </select>
 
                             <BlockedAction>

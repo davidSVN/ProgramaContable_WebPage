@@ -16,11 +16,7 @@ import { printOrden, buildPrintPayload } from '../../services/print';
 import { sendMessage, useWhatsApp } from '../../whatsapp';
 
 /* ── Constants ──────────────────────────────────────────────── */
-const PAYMENT_METHODS = ['Efectivo', 'Nequi', 'Daviplata', 'Transferencia', 'Llave', 'Saldo a Favor'];
-const PAYMENT_ICONS = {
-  Efectivo: '💵', Nequi: '📱', Daviplata: '💳',
-  Transferencia: '🏦', Llave: '🔑', 'Saldo a Favor': '💰',
-};
+// Se eliminan PAYMENT_METHODS y PAYMENT_ICONS hardcodeados ya que ahora se cargan del backend
 const QUICK_SHORTCUTS = [
   { label: 'Lav + Sec',   keywords: ['lavado + secado', 'lavado y secado', 'lavado+secado', 'lav+sec'] },
   { label: 'X Libras',    keywords: ['libras', 'por libra'] },
@@ -34,8 +30,8 @@ const CONFETTI_COLORS = ['#FF6B2B', '#2B7FFF', '#2BA05A', '#FFD700', '#E53E8A', 
 const fmtCOP = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-CO');
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
-function initPayments() {
-  return PAYMENT_METHODS.map(m => ({ method: m, amount: '', enabled: false }));
+function initPayments(channels = []) {
+  return channels.map(m => ({ method: m.nombre, amount: '', enabled: false }));
 }
 
 function findServiceByShortcut(services, keywords) {
@@ -860,9 +856,13 @@ function PaymentSection({
   const paymentComplete = Math.abs(totalAbono - total) < 0.5;
   const hasAbono = totalAbono > 0.5;
 
-  const visibleMethods = paymentStatus === 'Pagada'
-    ? PAYMENT_METHODS.filter(m => m !== 'Saldo a Favor' || saldoAFavor > 0)
-    : PAYMENT_METHODS.filter(m => m !== 'Saldo a Favor' || saldoAFavor > 0);
+  const visibleMethods = (availableChannels || [])
+    .filter(m => m.nombre !== 'Saldo a Favor')
+    .map(m => ({ nombre: m.nombre, emoji: m.emoji || '💳' }));
+
+  if (saldoAFavor > 0) {
+    visibleMethods.push({ nombre: 'Saldo a Favor', emoji: '💰' });
+  }
 
   const bannerState = paymentStatus === 'Debe'
     ? paymentOverflow ? 'error'
@@ -892,41 +892,41 @@ function PaymentSection({
           /* Single radio selection */
           visibleMethods.map(m => (
             <label
-              key={m}
-              className={`no-method-row${singleMethod === m ? ' no-method-row--active' : ''}`}
+              key={m.nombre}
+              className={`no-method-row${singleMethod === m.nombre ? ' no-method-row--active' : ''}`}
             >
               <input
                 type="radio"
                 className="no-method-radio"
                 name="payment-method"
-                value={m}
-                checked={singleMethod === m}
-                onChange={() => onSingleMethod(m)}
+                value={m.nombre}
+                checked={singleMethod === m.nombre}
+                onChange={() => onSingleMethod(m.nombre)}
               />
-              <span className="no-method-icon">{PAYMENT_ICONS[m]}</span>
-              <span className="no-method-label">{m}</span>
+              <span className="no-method-icon">{m.emoji}</span>
+              <span className="no-method-label">{m.nombre}</span>
             </label>
           ))
         ) : (
           /* Checkboxes with amounts */
           visibleMethods.map(m => {
-            const p = payments.find(x => x.method === m) || { method: m, amount: '', enabled: false };
-            const isSaldo = m === 'Saldo a Favor';
+            const p = payments.find(x => x.method === m.nombre) || { method: m.nombre, amount: '', enabled: false };
+            const isSaldo = m.nombre === 'Saldo a Favor';
             return (
               <div
-                key={m}
+                key={m.nombre}
                 className={`no-method-row${p.enabled ? ' no-method-row--active' : ''}`}
               >
                 <input
                   type="checkbox"
                   className="no-method-checkbox"
                   checked={p.enabled}
-                  onChange={e => onPaymentChange(m, 'enabled', e.target.checked)}
-                  aria-label={`Pago con ${m}`}
+                  onChange={e => onPaymentChange(m.nombre, 'enabled', e.target.checked)}
+                  aria-label={`Pago con ${m.nombre}`}
                 />
-                <span className="no-method-icon">{PAYMENT_ICONS[m]}</span>
+                <span className="no-method-icon">{m.emoji}</span>
                 <span className="no-method-label">
-                  {m}
+                  {m.nombre}
                   {isSaldo && saldoAFavor > 0 && (
                     <span style={{ fontSize: '0.75rem', color: '#6B6560', marginLeft: 6 }}>
                       (máx. {fmtCOP(saldoAFavor)})
@@ -944,10 +944,10 @@ function PaymentSection({
                   onChange={e => {
                     let val = parseFloat(e.target.value) || 0;
                     if (isSaldo && saldoAFavor > 0) val = Math.min(val, saldoAFavor);
-                    onPaymentChange(m, 'amount', val);
+                    onPaymentChange(m.nombre, 'amount', val);
                   }}
                   placeholder="$0"
-                  aria-label={`Monto ${m}`}
+                  aria-label={`Monto ${m.nombre}`}
                 />
               </div>
             );
@@ -1103,8 +1103,9 @@ export default function NuevaOrden() {
 
   // ── Payment ───────────────────────────────────────────────
   const [paymentStatus, setPaymentStatus] = useState('Debe');
-  const [singleMethod, setSingleMethod]   = useState('Efectivo');
-  const [payments, setPayments]           = useState(initPayments);
+  const [singleMethod, setSingleMethod]   = useState('efectivo');
+  const [payments, setPayments]           = useState([]);
+  const [availableChannels, setAvailableChannels] = useState([]);
 
   // ── Quick add (kept for reference; shortcuts wired via ServiceSearchInput) ──
 
@@ -1133,6 +1134,24 @@ export default function NuevaOrden() {
   const searchTimer     = useRef(null);
   const toastTimers     = useRef({});
   const searchRef       = useRef(null);
+
+  // ── Fetch Channels ────────────────────────────────────────
+  useEffect(() => {
+    const fetchChannels = async () => {
+      try {
+        const res = await api.get('/canales/saldos');
+        const active = res.filter(c => c.is_active);
+        // Add virtual 'Saldo a Favor' if appropriate, or keep it in backend?
+        // Let's stick to what backend returns.
+        setAvailableChannels(active);
+        setPayments(initPayments(active));
+        if (active.length > 0) setSingleMethod(active[0].nombre);
+      } catch (err) {
+        console.error('Error fetching channels:', err);
+      }
+    };
+    fetchChannels();
+  }, []);
 
   // ── Computed ─────────────────────────────────────────────
   const subtotal = useMemo(
@@ -1752,6 +1771,7 @@ export default function NuevaOrden() {
             saldoAFavor={selectedClient?.saldo_a_favor || 0}
             totalAbono={totalAbono}
             total={total}
+            availableChannels={availableChannels}
           />
         </div>
 

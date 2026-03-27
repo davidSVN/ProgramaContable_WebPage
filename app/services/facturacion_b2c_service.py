@@ -372,23 +372,35 @@ async def crear_orden(
                         amount         = p["monto"],
                     ))
 
-        # ── PASO 6: gasto de agencia automático ───────────────────────────────
-        for s in servicios:
-            if s.get("is_agency"):
-                svc_name = s.get("name", "Servicio")
-                # Truncar para evitar DataError en spent_general_name (max 100)
-                nombre_gasto = f"Orden #{next_order_number} - {svc_name} (Agencia)"[:100]
-                
-                gasto_agencia = SpentBusiness(
-                    tenant_id            = tenant_id,
-                    spent_date           = now_bogota,
-                    spent_category       = "Agencia",
-                    spent_general_name   = nombre_gasto,
-                    spent_payment_method = "Nequi",
-                    spent_value          = s["spent_per_service"],
-                    description          = f"Costo automático para {svc_name} en orden #{next_order_number} - Cliente: {nombre_usuario}"
+                # ── PASO 6: Gasto de agencia automático ───────────────────────────────
+                # Intentar buscar un canal activo de tipo billetera_digital (preferiblemente nequi)
+                metodo_gasto = "nequi"
+                from app.models import CanalPago
+                res_canal = await db.execute(
+                    select(CanalPago.nombre)
+                    .where(CanalPago.tenant_id == tenant_id, CanalPago.is_active == True)
+                    .where(or_(CanalPago.nombre.ilike("%nequi%"), CanalPago.tipo == "billetera_digital"))
+                    .limit(1)
                 )
-                db.add(gasto_agencia)
+                canal_nombre = res_canal.scalar()
+                if canal_nombre:
+                    metodo_gasto = canal_nombre
+
+                for s in servicios:
+                    if s.get("is_agency") and s.get("spent_per_service", 0) > 0:
+                        svc_name = s.get("name", "Servicio")
+                        nombre_gasto = f"Orden #{next_order_number} - {svc_name} (Agencia)"[:100]
+                        
+                        gasto_agencia = SpentBusiness(
+                            tenant_id            = tenant_id,
+                            spent_date           = now_bogota,
+                            spent_category       = "Agencia",
+                            spent_general_name   = nombre_gasto,
+                            spent_payment_method = metodo_gasto,
+                            spent_value          = s["spent_per_service"],
+                            description          = f"Costo automático para {svc_name} en orden #{next_order_number} - Cliente: {nombre_usuario}"
+                        )
+                        db.add(gasto_agencia)
 
         await db.commit()
         await db.refresh(orden)
