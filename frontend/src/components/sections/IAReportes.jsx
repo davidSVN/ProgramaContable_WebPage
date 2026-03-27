@@ -118,7 +118,7 @@ function PremiumGate({ isPremium, children }) {
 
 // ── MetricColumn ───────────────────────────────────────────────────────────────
 
-function MetricColumn({ label, value, pct, isCurrency, isGoodUp, loading }) {
+function MetricColumn({ label, value, pct, isCurrency, isGoodUp, loading, valueColor, onClick }) {
   const animated = useCountUp(value ?? 0);
   const display  = isCurrency ? fmtCOP(animated) : Math.round(animated).toLocaleString('es-CO');
   const isUp     = pct != null && Number(pct) >= 0;
@@ -126,9 +126,15 @@ function MetricColumn({ label, value, pct, isCurrency, isGoodUp, loading }) {
   const pctFmt   = fmtPct(pct);
 
   return (
-    <div className="ia-metric-col">
+    <div 
+      className={`ia-metric-col ${onClick ? 'ia-metric-col--clickable' : ''}`}
+      onClick={onClick}
+    >
       <div className="ia-metric-label">{label}</div>
-      <div className="ia-metric-value">
+      <div 
+        className="ia-metric-value" 
+        style={valueColor ? { color: valueColor } : {}}
+      >
         {loading ? <Skel w={130} h={38} r={8} /> : display}
       </div>
       <div className={`ia-metric-change ${pctFmt ? (isGood ? 'good' : 'bad') : ''}`}>
@@ -392,11 +398,13 @@ const fmtFechaDia = (dateStr) => {
 };
 
 const METODO_COLORS = {
-  'Efectivo':      '#4CAF50',
-  'Transferencia': '#185FA5',
-  'Nequi':         '#7F77DD',
-  'Daviplata':     '#FF6B2B',
-  'Tarjeta':       '#1D9E75',
+  'Efectivo':      '#4CAF50', 'efectivo':      '#4CAF50',
+  'Transferencia': '#185FA5', 'transferencia': '#185FA5',
+  'Nequi':         '#7F77DD', 'nequi':         '#7F77DD',
+  'Daviplata':     '#FF6B2B', 'daviplata':     '#FF6B2B',
+  'Tarjeta':       '#1D9E75', 'tarjeta':       '#1D9E75',
+  'Rappi Pay':     '#FF3D00', 'rappi pay':     '#FF3D00',
+  'Nubank':        '#8A05BE', 'nubank':        '#8A05BE',
 };
 
 const ESTADO_PAGO_CFG = {
@@ -740,7 +748,7 @@ function ResumenDia({ data, loading, fechaDia, onVolver, onDiaAnterior, onDiaSig
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 
-export default function IAReportes() {
+export default function IAReportes({ onNavigate }) {
   const { send: sendWA } = useWhatsApp();
   const plan      = localStorage.getItem('washflow_plan') ?? 'basic';
   const isPremium = plan === 'premium' || plan === 'superadmin';
@@ -1011,6 +1019,13 @@ export default function IAReportes() {
             label="Neto" value={financiero?.neto ?? null}
             pct={financiero?.vs_anterior?.neto_pct ?? null}
             isCurrency isGoodUp loading={loadFin}
+          />
+          <div className="ia-income-divider" />
+          <MetricColumn
+            label="Total Deben" value={ordenesResumen?.total_deben ?? null}
+            isCurrency isGoodUp={false} loading={loadOps}
+            valueColor="#C62828"
+            onClick={() => onNavigate && onNavigate('facturas-cobrar')}
           />
         </div>
 

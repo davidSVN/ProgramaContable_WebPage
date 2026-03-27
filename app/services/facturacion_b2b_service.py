@@ -248,7 +248,7 @@ async def crear_orden_b2b(
                     spent_date           = now_bogota,
                     spent_category       = "Agencia",
                     spent_general_name   = nombre_gasto,
-                    spent_payment_method = "Nequi",
+                    spent_payment_method = "nequi",
                     spent_value          = s["spent_per_service"],
                     description          = f"Costo automático para {svc_name} en orden #{orden.id} - Cliente: {nombre_usuario}"
                 )
@@ -521,7 +521,8 @@ async def registrar_pago_institucional(
         nombre_usuario = usuario.user_name if usuario else f"ID {factura.user_id}"
 
         # Si paga con Saldo a Favor, limitar al saldo disponible
-        if metodo_pago == "Saldo a Favor":
+        metodo_lower = metodo_pago.lower().strip()
+        if metodo_lower == "saldo a favor":
             monto = min(monto, float(usuario.saldo_a_favor))
             if monto <= 0:
                 return "El usuario no tiene Saldo a Favor suficiente."

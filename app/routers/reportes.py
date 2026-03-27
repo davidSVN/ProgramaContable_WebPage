@@ -162,8 +162,8 @@ async def reporte_ordenes_resumen(
     if orders_df.empty:
         return {
             "total": 0, "total_ingresos": 0, "total_egresos": 0, "income_neto": 0,
-            "ticket_promedio": 0, "ordenes_debe": 0, "pct_cobrado": 0, "por_estado": {},
-            "ingresos_por_metodo": {}
+            "total_deben": 0, "ticket_promedio": 0, "ordenes_debe": 0, "pct_cobrado": 0,
+            "por_estado": {}, "ingresos_por_metodo": {}
         }
 
     gastos_df = await _get_gastos_df(db, current_user.tenant_id, fecha_inicio, fecha_fin)
@@ -171,6 +171,7 @@ async def reporte_ordenes_resumen(
     egresos = gastos_df["spent_value"].sum() if not gastos_df.empty else 0
     
     # Cálculos adicionales para el frontend
+    total_deben = float(orders_df[orders_df["balance_due"] > 0]["balance_due"].sum())
     ordenes_debe = len(orders_df[orders_df["is_paid"] == False])
     pct_cobrado = (1 - (orders_df["balance_due"].sum() / orders_df["total_amount"].sum() if orders_df["total_amount"].sum() > 0 else 0)) * 100
     
@@ -196,6 +197,7 @@ async def reporte_ordenes_resumen(
         "total_ingresos": float(ingresos),
         "total_egresos": float(egresos),
         "income_neto": float(ingresos - egresos),
+        "total_deben": total_deben,
         "ticket_promedio": float(orders_df["total_amount"].mean()),
         "ordenes_debe": ordenes_debe,
         "pct_cobrado": round(pct_cobrado, 1),

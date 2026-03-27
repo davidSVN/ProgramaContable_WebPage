@@ -795,6 +795,6 @@ class MisCuentasResponse(BaseModel):
     total_ingresos: float
     total_gastos: float
     total_saldo: float
-    ordenes_por_cobrar: float   # deuda pendiente de ordenes no pagadas
-    washflow_net_income: float  # total_ingresos + ordenes_por_cobrar (lo que realmente se ha generado)
+    ordenes_por_cobrar: float
+    washflow_net_income: float
     transferencias: list[ChannelTransferOut]

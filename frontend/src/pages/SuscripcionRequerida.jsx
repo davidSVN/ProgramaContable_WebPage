@@ -72,10 +72,14 @@ export default function SuscripcionRequerida({ onPlanActivated }) {
       {/* Logo */}
       <a className="sr-logo" href="/">
         <div className="sr-logo__icon">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <circle cx="10" cy="10" r="7" stroke="#fff" strokeWidth="2"/>
-            <circle cx="10" cy="10" r="3.5" stroke="#fff" strokeWidth="1.5"/>
-            <circle cx="5" cy="5" r="1.2" fill="#fff"/>
+          <svg width="24" height="24" viewBox="0 0 32 32" fill="none">
+            <rect x="2" y="2" width="28" height="28" rx="2" fill="#FF6B2B" stroke="#fff" strokeWidth="2.5"/>
+            <rect x="2" y="2" width="28" height="8" rx="2" fill="#FF6B2B" stroke="#fff" strokeWidth="2.5"/>
+            <circle cx="7" cy="6" r="1.5" fill="#fff"/>
+            <circle cx="11" cy="6" r="1.5" fill="#fff"/>
+            <rect x="16" y="5" width="10" height="2" rx="1" fill="#fff"/>
+            <circle cx="16" cy="19" r="8" fill="#fff" stroke="#fff" strokeWidth="2"/>
+            <circle cx="16" cy="19" r="5" fill="#D4E8F7" stroke="#FF6B2B" strokeWidth="2"/>
           </svg>
         </div>
         <span className="sr-logo__text">WashFlow</span>

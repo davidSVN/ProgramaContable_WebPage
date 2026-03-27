@@ -85,10 +85,14 @@ export default function Sidebar({ activeSection, onNavigate, user, collapsed, on
         {/* Logo */}
         <a className="sidebar-logo" href="/" aria-label="WashFlow — ir al inicio">
           <div className="sidebar-logo__icon" aria-hidden="true">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <circle cx="10" cy="10" r="7" stroke="#fff" strokeWidth="2"/>
-              <circle cx="10" cy="10" r="3.5" stroke="#fff" strokeWidth="1.5"/>
-              <circle cx="5" cy="5" r="1.2" fill="#fff"/>
+            <svg width="24" height="24" viewBox="0 0 32 32" fill="none">
+              <rect x="2" y="2" width="28" height="28" rx="2" fill="#FF6B2B" stroke="#fff" strokeWidth="2.5"/>
+              <rect x="2" y="2" width="28" height="8" rx="2" fill="#FF6B2B" stroke="#fff" strokeWidth="2.5"/>
+              <circle cx="7" cy="6" r="1.5" fill="#fff"/>
+              <circle cx="11" cy="6" r="1.5" fill="#fff"/>
+              <rect x="16" y="5" width="10" height="2" rx="1" fill="#fff"/>
+              <circle cx="16" cy="19" r="8" fill="#fff" stroke="#fff" strokeWidth="2"/>
+              <circle cx="16" cy="19" r="5" fill="#D4E8F7" stroke="#FF6B2B" strokeWidth="2"/>
             </svg>
           </div>
           <span className="sidebar-logo__text">WashFlow</span>
@@ -346,6 +350,17 @@ function WhatsAppIcon() {
         a8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8
         8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5
         a8.48 8.48 0 0 1 8 8v.5z"/>
+    </svg>
+  );
+}
+
+function WalletIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/>
+      <path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/>
+      <path d="M18 12a2 2 0 0 0 0 4h4v-4z"/>
     </svg>
   );
 }
