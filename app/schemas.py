@@ -755,3 +755,46 @@ class PaymentHistoryResponse(BaseModel):
     transactions: list
     current_plan: str
     plan_expires_at: Optional[datetime] = None
+
+
+
+# ─── Mis Cuentas ──────────────────────────────────────────────────────────────
+
+class ChannelTransferCreate(BaseModel):
+    from_channel: str
+    to_channel: str
+    amount: float
+    notes: Optional[str] = None
+    transfer_date: Optional[datetime] = None
+
+
+class ChannelTransferOut(BaseModel):
+    id: int
+    from_channel: str
+    to_channel: str
+    amount: float
+    notes: Optional[str] = None
+    transfer_date: datetime
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ChannelBalance(BaseModel):
+    channel: str
+    ingresos: float            # suma de pagos de órdenes + abonos b2b en este canal
+    gastos: float              # suma de gastos en este canal
+    transferencias_in: float   # dinero que llegó a este canal via transferencias internas
+    transferencias_out: float  # dinero que salió de este canal via transferencias internas
+    ajuste: float = 0.0        # ajuste de calibración manual (saldo_real - saldo_calculado)
+    saldo: float               # saldo_calculado + ajuste = saldo real mostrado
+
+
+class MisCuentasResponse(BaseModel):
+    canales: list[ChannelBalance]
+    total_ingresos: float
+    total_gastos: float
+    total_saldo: float
+    ordenes_por_cobrar: float   # deuda pendiente de ordenes no pagadas
+    washflow_net_income: float  # total_ingresos + ordenes_por_cobrar (lo que realmente se ha generado)
+    transferencias: list[ChannelTransferOut]

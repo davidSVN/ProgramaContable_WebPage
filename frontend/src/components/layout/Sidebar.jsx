@@ -41,6 +41,7 @@ const NAV = [
       { id: 'servicios-terceros', label: 'Servicios en Agencia',   emoji: '📤' },
     ],
   },
+  { id: 'mis-cuentas', label: 'Mis Cuentas', icon: <WalletIcon /> },
   { id: 'usuarios', label: 'Usuarios', icon: <UserIcon /> },
   { id: 'instituciones', label: 'Instituciones', icon: <BuildingIcon /> },
   { id: 'servicios', label: 'Servicios', icon: <SettingsIcon /> },
@@ -354,6 +355,15 @@ function DollarSignIcon() {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <line x1="12" y1="1" x2="12" y2="23"/>
       <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+    </svg>
+  );
+}
+
+function WalletIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 12V22H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h16v4"/>
+      <path d="M22 12v4h-4a2 2 0 0 1 0-4h4z"/>
     </svg>
   );
 }

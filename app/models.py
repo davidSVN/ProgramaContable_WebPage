@@ -352,3 +352,27 @@ class PaymentTransaction(Base):
 
     # Relación
     tenant = relationship("Tenant")
+
+
+class ChannelTransfer(Base):
+    """Transferencia interna entre canales de dinero (p.ej. efectivo → rappipay).
+
+    No representa ingreso ni gasto: es un movimiento entre cuentas propias.
+    El saldo de cada canal = ingresos en ese canal − gastos en ese canal + entradas − salidas de transferencias.
+    """
+    __tablename__ = "channel_transfers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
+
+    # Canal origen (de dónde sale el dinero)
+    from_channel = Column(String(50), nullable=False)
+    # Canal destino (a dónde llega el dinero)
+    to_channel = Column(String(50), nullable=False)
+
+    amount = Column(Float, nullable=False)
+    notes = Column(Text, nullable=True)
+    transfer_date = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    tenant = relationship("Tenant")

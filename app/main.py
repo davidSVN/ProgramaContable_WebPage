@@ -57,7 +57,7 @@ app.add_middleware(
 
 from fastapi import Depends
 from app.dependencies import require_suscripcion_activa
-from app.routers import auth, superadmin, gastos, proveedores, servicios, usuarios, ordenes, b2b, app_users, settings, reportes, suscripcion, configuracion, wompi, join_requests
+from app.routers import auth, superadmin, gastos, proveedores, servicios, usuarios, ordenes, b2b, app_users, settings, reportes, suscripcion, configuracion, wompi, join_requests, mis_cuentas
 
 _sub = [Depends(require_suscripcion_activa)]
 
@@ -78,6 +78,7 @@ app.include_router(join_requests.router, prefix="/api")
 app.include_router(wompi.public_router, prefix="/api")  # Sin JWT — webhook de Wompi
 app.include_router(wompi.router, prefix="/api")
 app.include_router(settings.router, prefix="/api/settings", tags=["Settings"], dependencies=_sub)
+app.include_router(mis_cuentas.router, prefix="/api", tags=["Mis Cuentas"], dependencies=_sub)
 
 
 # ─── Static Files / Frontend ──────────────────────────────────────────────────

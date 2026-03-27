@@ -20,6 +20,7 @@ import Servicios from '../sections/Servicios';
 import Proveedores from '../sections/Proveedores';
 import UsuariosApp from '../sections/UsuariosApp';
 import Configuracion from '../sections/Configuracion';
+import MisCuentas from '../sections/MisCuentas';
 import { WhatsAppCenter } from '../../whatsapp';
 
 const SECTIONS = {
@@ -38,6 +39,7 @@ const SECTIONS = {
   'proveedores': Proveedores,
   'usuarios-app': UsuariosApp,
   'configuracion': Configuracion,
+  'mis-cuentas': MisCuentas,
   'whatsapp-center': WhatsAppCenter,
 };
 
