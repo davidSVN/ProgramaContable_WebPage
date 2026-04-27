@@ -24,9 +24,10 @@ async def recalcular_todos_los_tenants(db_factory):
 async def procesar_renovaciones(db_factory):
     """
     Procesa cobros recurrentes de Wompi para tenants cuyo plan venció.
+    Luego degrada a 'none' los que no pudieron renovar y vencio su gracia.
     Called once per night at 6:00 AM server time.
     """
-    from app.services.wompi_service import process_recurring_renewals
+    from app.services.wompi_service import process_recurring_renewals, downgrade_expired_plans
 
     logger.info(f"[Scheduler] Iniciando renovaciones automáticas - {datetime.utcnow()}")
     try:
@@ -40,6 +41,21 @@ async def procesar_renovaciones(db_factory):
         logger.info(f"[Scheduler] Renovaciones completadas — {len(results)} tenants procesados")
     except Exception as e:
         logger.error(f"[Scheduler] Error en renovaciones automáticas: {e}")
+
+    logger.info(f"[Scheduler] Iniciando degradación de planes vencidos - {datetime.utcnow()}")
+    try:
+        async with db_factory() as db:
+            downgrades = await downgrade_expired_plans(db)
+        for d in downgrades:
+            if d["action"] == "grace_period_started":
+                logger.info(f"[Scheduler] Gracia iniciada tenant {d['tenant_id']}: hasta {d['grace_ends_at']}")
+            elif d["action"] == "downgraded_to_none":
+                logger.warning(f"[Scheduler] Plan degradado a 'none' tenant {d['tenant_id']}")
+            elif d["action"] == "error":
+                logger.error(f"[Scheduler] Error degradando tenant {d['tenant_id']}: {d['error']}")
+        logger.info(f"[Scheduler] Degradaciones completadas — {len(downgrades)} tenants procesados")
+    except Exception as e:
+        logger.error(f"[Scheduler] Error en degradación de planes: {e}")
 
 
 async def seconds_until(target_time: time) -> float:

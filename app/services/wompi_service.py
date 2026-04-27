@@ -26,14 +26,14 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 PLAN_PRICES = {
     "basic": {
-        "monthly": 6990000,     # $69.900 COP
-        "yearly": 76800000,     # $768.000 COP
-        "trial": 3495000,       # $34.950 COP (50% descuento, 7 días)
+        "monthly": 1000,
+        "yearly": 1000,
+        "trial": 1000,
     },
     "premium": {
-        "monthly": 9490000,     # $94.900 COP
-        "yearly": 104390000,    # $1.043.900 COP
-        "trial": 4745000,       # $47.450 COP (50% descuento, 7 días)
+        "monthly": 1100,
+        "yearly": 1100,
+        "trial": 1100,
     },
 }
 
@@ -428,4 +428,57 @@ async def process_recurring_renewals(db: AsyncSession) -> list:
                 "error": str(e),
             })
 
+    return results
+
+
+async def downgrade_expired_plans(db: AsyncSession) -> list:
+    """
+    Aplica periodo de gracia o degrada a 'none' los planes vencidos sin renovación.
+    - Si plan vencido y sin gracia iniciada: inicia gracia (5 días desde vencimiento)
+    - Si gracia vencida: plan = "none"
+    Debe llamarse DESPUÉS de process_recurring_renewals para no degradar
+    a tenants que acaban de renovar.
+    """
+    from sqlalchemy import and_
+
+    now = datetime.utcnow()
+
+    stmt = select(Tenant).where(
+        and_(
+            Tenant.plan.in_(["basic", "premium"]),
+            Tenant.plan_expires_at.isnot(None),
+            Tenant.plan_expires_at <= now,
+        )
+    )
+    result = await db.execute(stmt)
+    tenants = result.scalars().all()
+
+    results = []
+
+    for tenant in tenants:
+        try:
+            if tenant.grace_period_ends_at is None:
+                tenant.grace_period_ends_at = tenant.plan_expires_at + timedelta(days=5)
+                results.append({
+                    "tenant_id": tenant.id,
+                    "action": "grace_period_started",
+                    "grace_ends_at": tenant.grace_period_ends_at.isoformat(),
+                })
+            elif tenant.grace_period_ends_at < now:
+                tenant.plan = "none"
+                tenant.wompi_payment_source_id = None
+                tenant.renewal_failed_at = None
+                tenant.grace_period_ends_at = None
+                results.append({
+                    "tenant_id": tenant.id,
+                    "action": "downgraded_to_none",
+                })
+        except Exception as e:
+            results.append({
+                "tenant_id": tenant.id,
+                "action": "error",
+                "error": str(e),
+            })
+
+    await db.commit()
     return results
