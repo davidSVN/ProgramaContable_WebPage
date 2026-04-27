@@ -159,7 +159,7 @@ function PlanModal({ currentPlan, onClose, onChanged }) {
               <>
                 <p className="ab-modal-plan__price">{getPrice('basic').label}</p>
                 <p style={{ fontSize: '12px', color: '#6B6B6B', marginTop: '-8px', marginBottom: '4px' }}>
-                  por 7 días — luego <s style={{ color: '#9E9E9E' }}>{getPrice('basic').originalLabel}</s> <strong>$69.900/mes</strong>
+                  por 7 días — luego <s style={{ color: '#9E9E9E' }}>{getPrice('basic').originalLabel}</s> <strong>$1.500/mes</strong>
                 </p>
                 <p style={{ fontSize: '12px', color: '#FF6B2B', fontWeight: 600, marginBottom: '8px' }}>
                   {getPrice('basic').savings}
@@ -201,7 +201,7 @@ function PlanModal({ currentPlan, onClose, onChanged }) {
               <>
                 <p className="ab-modal-plan__price">{getPrice('premium').label}</p>
                 <p style={{ fontSize: '12px', color: '#6B6B6B', marginTop: '-8px', marginBottom: '4px' }}>
-                  por 7 días — luego <s style={{ color: '#9E9E9E' }}>{getPrice('premium').originalLabel}</s> <strong>$94.900/mes</strong>
+                  por 7 días — luego <s style={{ color: '#9E9E9E' }}>{getPrice('premium').originalLabel}</s> <strong>$2.000/mes</strong>
                 </p>
                 <p style={{ fontSize: '12px', color: '#FF6B2B', fontWeight: 600, marginBottom: '8px' }}>
                   {getPrice('premium').savings}

@@ -132,7 +132,7 @@ export default function SuscripcionRequerida({ onPlanActivated }) {
               {selectedPeriod === 'trial' && (
                 <>
                   <p style={{ fontSize: '13px', color: '#6B6B6B', margin: '-4px 0 4px' }}>
-                    por 7 días — luego <s style={{ color: '#9E9E9E' }}>{PLAN_PRICES.basic.trial.originalLabel}</s> <strong>$69.900/mes</strong>
+                    por 7 días — luego <s style={{ color: '#9E9E9E' }}>{PLAN_PRICES.basic.trial.originalLabel}</s> <strong>$1.500/mes</strong>
                   </p>
                   <p style={{ fontSize: '12px', color: '#FF6B2B', fontWeight: 600, margin: '0 0 4px' }}>
                     {PLAN_PRICES.basic.trial.savings}
@@ -171,7 +171,7 @@ export default function SuscripcionRequerida({ onPlanActivated }) {
               {selectedPeriod === 'trial' && (
                 <>
                   <p style={{ fontSize: '13px', color: '#6B6B6B', margin: '-4px 0 4px' }}>
-                    por 7 días — luego <s style={{ color: '#9E9E9E' }}>{PLAN_PRICES.premium.trial.originalLabel}</s> <strong>$94.900/mes</strong>
+                    por 7 días — luego <s style={{ color: '#9E9E9E' }}>{PLAN_PRICES.premium.trial.originalLabel}</s> <strong>$2.000/mes</strong>
                   </p>
                   <p style={{ fontSize: '12px', color: '#FF6B2B', fontWeight: 600, margin: '0 0 4px' }}>
                     {PLAN_PRICES.premium.trial.savings}

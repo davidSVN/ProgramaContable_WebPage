@@ -26,8 +26,8 @@ const PREMIUM_FEATURES = [
 ]
 
 const PRICES = {
-  basic:   { monthly: '$69.900/mes', yearly: '$768.000/año',    trial: '$34.950',  trialOriginal: '$69.900/mes', savings: 'Ahorras 2 meses' },
-  premium: { monthly: '$94.900/mes', yearly: '$1.043.900/año',  trial: '$47.450',  trialOriginal: '$94.900/mes', savings: 'Ahorras 2 meses' },
+  basic:   { monthly: '$1.500/mes', yearly: '$15.000/año',  trial: '$750',   trialOriginal: '$1.500/mes', savings: 'Ahorras 2 meses' },
+  premium: { monthly: '$2.000/mes', yearly: '$20.000/año',  trial: '$1.000', trialOriginal: '$2.000/mes', savings: 'Ahorras 2 meses' },
 }
 
 export default function Landing() {
@@ -129,7 +129,7 @@ export default function Landing() {
                     </div>
                     <div className="pricing__period-label">por 7 días</div>
                     <div style={{ fontSize: '13px', color: '#6B6B6B', marginTop: '4px' }}>
-                      Después <s style={{ color: '#9E9E9E' }}>{PRICES.basic.trialOriginal}</s> <strong>$69.900/mes</strong>
+                      Después <s style={{ color: '#9E9E9E' }}>{PRICES.basic.trialOriginal}</s> <strong>$1.500/mes</strong>
                     </div>
                   </>
                 ) : (
@@ -163,7 +163,7 @@ export default function Landing() {
                     </div>
                     <div className="pricing__period-label">por 7 días</div>
                     <div style={{ fontSize: '13px', color: '#6B6B6B', marginTop: '4px' }}>
-                      Después <s style={{ color: '#9E9E9E' }}>{PRICES.premium.trialOriginal}</s> <strong>$94.900/mes</strong>
+                      Después <s style={{ color: '#9E9E9E' }}>{PRICES.premium.trialOriginal}</s> <strong>$2.000/mes</strong>
                     </div>
                   </>
                 ) : (
