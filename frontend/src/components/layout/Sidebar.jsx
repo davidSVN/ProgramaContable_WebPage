@@ -1,11 +1,17 @@
 import { useState, useEffect } from 'react';
 import { usePlan } from '../../hooks/usePlan';
+import { api } from '../../services/api';
 
 const NAV = [
   {
     id: 'ia-reportes',
     label: 'IA & Reportes',
     icon: <BrainIcon />,
+  },
+  {
+    id: 'bi-insights',
+    label: 'BI Insights',
+    icon: <ChartBarIcon />,
   },
   {
     id: 'nueva-orden',
@@ -165,6 +171,9 @@ export default function Sidebar({ activeSection, onNavigate, user, collapsed, on
         {/* Plan badge */}
         <PlanBadge collapsed={collapsed} onNavigate={handleNav} />
 
+        {/* Expiry alert */}
+        <SidebarExpiryAlert collapsed={collapsed} onNavigate={handleNav} />
+
         {/* User */}
         <div className="sidebar-user">
           <div className="sidebar-user__avatar" aria-hidden="true">
@@ -210,6 +219,77 @@ function PlanBadge({ collapsed, onNavigate }) {
           onClick={() => onNavigate('configuracion')}
         >
           Mejorar →
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ── Sidebar Expiry Alert ───────────────────────────────── */
+function SidebarExpiryAlert({ collapsed, onNavigate }) {
+  const [status, setStatus] = useState(null);
+  const { isSuper } = usePlan();
+
+  useEffect(() => {
+    if (isSuper) return;
+    api.get('/wompi/subscription-status')
+      .then(data => setStatus(data))
+      .catch(() => {});
+  }, [isSuper]);
+
+  if (!status || isSuper) return null;
+
+  const { days_remaining, is_in_grace_period, renewal_failed, grace_period_ends_at,
+          card_last_four, auto_renew, has_payment_source } = status;
+
+  const showAlert = days_remaining <= 7 || is_in_grace_period;
+  if (!showAlert) return null;
+
+  const isExpired = days_remaining <= 0;
+  const needsRenew = !auto_renew || !has_payment_source || renewal_failed || isExpired;
+
+  let label = '';
+  let variant = 'warn'; // 'warn' | 'error' | 'info'
+
+  if (is_in_grace_period && renewal_failed) {
+    const until = grace_period_ends_at
+      ? new Date(grace_period_ends_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })
+      : '';
+    label = `Cobro fallido ****${card_last_four || ''}. Gracia hasta ${until}`;
+    variant = 'error';
+  } else if (isExpired) {
+    label = 'Plan vencido. Renueva ahora.';
+    variant = 'error';
+  } else if (days_remaining <= 7 && auto_renew && has_payment_source) {
+    label = `Renovación automática en ${days_remaining} día${days_remaining !== 1 ? 's' : ''}`;
+    variant = 'info';
+  } else {
+    label = `Plan vence en ${days_remaining} día${days_remaining !== 1 ? 's' : ''}`;
+    variant = 'warn';
+  }
+
+  if (collapsed) {
+    return (
+      <div
+        className={`sidebar-expiry-alert sidebar-expiry-alert--dot sidebar-expiry-alert--${variant}`}
+        title={label}
+        onClick={needsRenew ? () => onNavigate('configuracion') : undefined}
+        style={needsRenew ? { cursor: 'pointer' } : undefined}
+      >
+        <span className="sidebar-expiry-alert__dot-icon">!</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`sidebar-expiry-alert sidebar-expiry-alert--${variant}`}>
+      <p className="sidebar-expiry-alert__text">{label}</p>
+      {needsRenew && (
+        <button
+          className="sidebar-expiry-alert__btn"
+          onClick={() => onNavigate('configuracion')}
+        >
+          Renovar →
         </button>
       )}
     </div>
@@ -345,6 +425,17 @@ function WhatsAppIcon() {
         a8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8
         8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5
         a8.48 8.48 0 0 1 8 8v.5z"/>
+    </svg>
+  );
+}
+
+function ChartBarIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="20" x2="18" y2="10"/>
+      <line x1="12" y1="20" x2="12" y2="4"/>
+      <line x1="6"  y1="20" x2="6"  y2="14"/>
+      <line x1="2"  y1="20" x2="22" y2="20"/>
     </svg>
   );
 }

@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy import select
@@ -104,6 +106,21 @@ async def require_suscripcion_activa(
                 "plan_actual": "none",
             },
         )
+
+    tenant = current_user.tenant
+    if tenant.plan_expires_at and tenant.plan_expires_at < datetime.utcnow():
+        # Si el scheduler aún no corrió, calcula la gracia implícita desde plan_expires_at
+        grace_ends = tenant.grace_period_ends_at or (tenant.plan_expires_at + timedelta(days=5))
+        if grace_ends < datetime.utcnow():
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "code": "SUBSCRIPTION_EXPIRED",
+                    "message": "Tu suscripción ha vencido. Renueva para continuar.",
+                    "plan_actual": tenant.plan,
+                },
+            )
+
     return current_user
 
 

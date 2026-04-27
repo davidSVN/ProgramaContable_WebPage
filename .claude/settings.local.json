@@ -11,7 +11,11 @@
       "Bash(npm run:*)",
       "Bash(alembic revision:*)",
       "Bash(python -m alembic revision --autogenerate -m \"unique_tenant_nombre\")",
-      "Bash(python -m alembic revision --autogenerate -m \"add domicilio feature\")"
+      "Bash(python -m alembic revision --autogenerate -m \"add domicilio feature\")",
+      "Bash(pip install *)",
+      "Bash(python -)",
+      "PowerShell(& \"C:\\\\Users\\\\david.vasquez\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python312\\\\python.exe\" -m venv venv)",
+      "mcp__railway-db__query"
     ]
   }
 }

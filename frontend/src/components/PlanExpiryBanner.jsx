@@ -11,12 +11,12 @@ export default function PlanExpiryBanner() {
       .catch(() => {});
   }, []);
 
-  if (!status || status.plan === 'none' || status.days_remaining > 5 || dismissed) {
+  if (!status || status.plan === 'none' || status.days_remaining > 7 || dismissed) {
     return null;
   }
 
-  const isExpired    = status.days_remaining === 0;
-  const isGrace      = status.is_in_grace_period;
+  const isExpired     = status.days_remaining <= 0;
+  const isGrace       = status.is_in_grace_period;
   const renewalFailed = status.renewal_failed;
 
   let message  = '';
@@ -32,7 +32,7 @@ export default function PlanExpiryBanner() {
     message  = `No pudimos cobrar tu tarjeta ****${status.card_last_four || ''}. Tienes hasta el ${until} para actualizar tu método de pago.`;
     bgColor  = '#FEFCBF';
     txtColor = '#975A16';
-  } else if (status.days_remaining <= 5 && status.days_remaining > 0) {
+  } else if (status.days_remaining > 0 && status.days_remaining <= 7) {
     const dias = `${status.days_remaining} día${status.days_remaining > 1 ? 's' : ''}`;
     if (status.auto_renew && status.has_payment_source) {
       message  = `Tu plan se renueva automáticamente en ${dias}.`;
