@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_user, require_premium
-from app.models import AppUser, OrderHeader, OrderDetail, OrderPayment, SpentBusiness, LaundryUser
+from app.models import AppUser, OrderHeader, OrderDetail, OrderPayment, SpentBusiness, LaundryUser, ConsolidatedInvoice
 from app.services import ml_engine
 
 router = APIRouter()
@@ -129,25 +129,32 @@ async def reporte_financiero(
 
     orders_df = await _get_orders_df(db, current_user.tenant_id)
     gastos_df = await _get_gastos_df(db, current_user.tenant_id)
-    
+
     engine = ml_engine.get_engine(current_user.tenant_id)
     raw_res = engine.calcular_income_neto(
-        orders_df, gastos_df, 
-        (inicio_actual, fin_actual), 
+        orders_df, gastos_df,
+        (inicio_actual, fin_actual),
         (inicio_anterior, fin_anterior)
     )
+
+    stmt_facturas = select(func.coalesce(func.sum(ConsolidatedInvoice.total_amount), 0)).where(
+        ConsolidatedInvoice.tenant_id == current_user.tenant_id,
+        ConsolidatedInvoice.is_paid == False,
+    )
+    facturas_por_cobrar = (await db.execute(stmt_facturas)).scalar()
 
     # Transformación para el frontend (IAReportes.jsx)
     return {
         "ingresos": raw_res["periodo_actual"]["ingresos"],
         "egresos": raw_res["periodo_actual"]["egresos"],
         "neto": raw_res["periodo_actual"]["neto"],
+        "facturas_por_cobrar": float(facturas_por_cobrar),
         "vs_anterior": {
             "ingresos_pct": raw_res["cambio_pct"]["ingresos"],
             "egresos_pct": raw_res["cambio_pct"]["egresos"],
             "neto_pct": raw_res["cambio_pct"]["neto"],
         },
-        "historico_mensual": raw_res.get("historico_mensual", []) # Backend needs updating for this too
+        "historico_mensual": raw_res.get("historico_mensual", [])
     }
 
 @router.get("/ordenes-resumen", summary="Resumen de órdenes")

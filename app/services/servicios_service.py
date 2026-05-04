@@ -30,7 +30,7 @@ async def listar(
             func.unaccent(Service.service_name).ilike(func.unaccent(f"%{search}%"))
         )
         
-    result = await db.execute(query.order_by(Service.service_name))
+    result = await db.execute(query.order_by(func.lower(Service.service_name)))
     return result.scalars().all()
 
 

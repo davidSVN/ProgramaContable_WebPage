@@ -25,14 +25,6 @@ router = APIRouter(prefix="/wompi", tags=["Wompi Payments"])
 public_router = APIRouter(prefix="/wompi", tags=["Wompi Webhook"])
 
 
-# ── Endpoints públicos ────────────────────────────────────────────────────────
-
-@public_router.get("/webhook-test")
-async def webhook_test():
-    """Verifica que el endpoint del webhook es alcanzable sin JWT."""
-    return {"status": "ok", "message": "Webhook endpoint is reachable", "jwt_required": False}
-
-
 @public_router.post("/webhook")
 async def wompi_webhook(
     request: Request,

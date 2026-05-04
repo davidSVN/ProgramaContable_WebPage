@@ -1012,6 +1012,11 @@ export default function IAReportes() {
             pct={financiero?.vs_anterior?.neto_pct ?? null}
             isCurrency isGoodUp loading={loadFin}
           />
+          <div className="ia-income-divider" />
+          <MetricColumn
+            label="Facturas por cobrar" value={financiero?.facturas_por_cobrar ?? null}
+            isCurrency isGoodUp={false} loading={loadFin}
+          />
         </div>
 
         <div className="ia-chart-area">
