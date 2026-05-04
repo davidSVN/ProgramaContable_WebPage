@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_user, require_premium
-from app.models import AppUser, OrderHeader, OrderDetail, OrderPayment, SpentBusiness, LaundryUser, ConsolidatedInvoice
+from app.models import AppUser, OrderHeader, OrderDetail, OrderPayment, SpentBusiness, LaundryUser
 from app.services import ml_engine
 
 router = APIRouter()
@@ -137,11 +137,16 @@ async def reporte_financiero(
         (inicio_anterior, fin_anterior)
     )
 
-    stmt_facturas = select(func.coalesce(func.sum(ConsolidatedInvoice.total_amount), 0)).where(
-        ConsolidatedInvoice.tenant_id == current_user.tenant_id,
-        ConsolidatedInvoice.is_paid == False,
+    # Todo el dinero pendiente de cobro: suma balance_due de todas las órdenes
+    # activas sin importar si son B2C o B2B (consolidated_invoices.balance_due
+    # ya está reflejado en orders.balance_due para órdenes vinculadas)
+    stmt_facturas = select(func.coalesce(func.sum(OrderHeader.balance_due), 0)).where(
+        OrderHeader.tenant_id == current_user.tenant_id,
+        OrderHeader.is_paid == False,
+        OrderHeader.order_status != "Cancelada",
+        OrderHeader.balance_due > 0,
     )
-    facturas_por_cobrar = (await db.execute(stmt_facturas)).scalar()
+    facturas_por_cobrar = float((await db.execute(stmt_facturas)).scalar())
 
     # Transformación para el frontend (IAReportes.jsx)
     return {
