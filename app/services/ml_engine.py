@@ -255,11 +255,11 @@ class MLEngine:
             return df[mask]
 
         def _ingresos(df):
-            """Suma net_income_value excluyendo órdenes canceladas."""
+            """Suma net_income_value solo de órdenes completamente pagadas."""
             if df.empty:
                 return 0.0
-            if "order_status" in df.columns:
-                df = df[df["order_status"] != "Cancelada"]
+            if "is_paid" in df.columns:
+                df = df[df["is_paid"] == True]
             return float(df["net_income_value"].sum()) if not df.empty else 0.0
 
         def _egresos(df):
