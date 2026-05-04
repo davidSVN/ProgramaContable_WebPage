@@ -254,18 +254,34 @@ class MLEngine:
             mask = (series_naive >= inicio) & (series_naive <= fin)
             return df[mask]
 
+        def _ingresos(df):
+            """Suma net_income_value excluyendo órdenes canceladas."""
+            if df.empty:
+                return 0.0
+            if "order_status" in df.columns:
+                df = df[df["order_status"] != "Cancelada"]
+            return float(df["net_income_value"].sum()) if not df.empty else 0.0
+
+        def _egresos(df):
+            """Suma spent_value excluyendo agencia (ya descontada en net_income_value)."""
+            if df.empty:
+                return 0.0
+            if "spent_category" in df.columns:
+                df = df[df["spent_category"] != "Agencia"]
+            return float(df["spent_value"].sum()) if not df.empty else 0.0
+
         # Current period
         ord_actual = filtrar(orders_df, "created_at", *periodo_actual)
         gas_actual = filtrar(gastos_df, "spent_date", *periodo_actual)
-        ingresos_actual = ord_actual["net_income_value"].sum() if not ord_actual.empty else 0.0
-        egresos_actual = gas_actual["spent_value"].sum() if not gas_actual.empty else 0.0
+        ingresos_actual = _ingresos(ord_actual)
+        egresos_actual  = _egresos(gas_actual)
         neto_actual = ingresos_actual - egresos_actual
 
         # Previous period
         ord_anterior = filtrar(orders_df, "created_at", *periodo_anterior)
         gas_anterior = filtrar(gastos_df, "spent_date", *periodo_anterior)
-        ingresos_anterior = ord_anterior["net_income_value"].sum() if not ord_anterior.empty else 0.0
-        egresos_anterior = gas_anterior["spent_value"].sum() if not gas_anterior.empty else 0.0
+        ingresos_anterior = _ingresos(ord_anterior)
+        egresos_anterior  = _egresos(gas_anterior)
         neto_anterior = ingresos_anterior - egresos_anterior
 
         # % change
@@ -294,9 +310,9 @@ class MLEngine:
             
             o_m = filtrar(orders_df, "created_at", m_start, m_end)
             g_m = filtrar(gastos_df, "spent_date", m_start, m_end)
-            
-            ing = o_m["net_income_value"].sum() if not o_m.empty else 0.0
-            egr = g_m["spent_value"].sum() if not g_m.empty else 0.0
+
+            ing = _ingresos(o_m)
+            egr = _egresos(g_m)
             
             historico.append({
                 "mes": m_start.strftime("%b %y").lower(),
