@@ -545,11 +545,23 @@ async def actualizar_estado(
         # Actualizar estado
         orden.order_status = estado
 
-        # Regla is_paid
-        if orden.balance_due <= 0 or estado == "Terminada" or estado_pago == "Pagada":
+        # Regla is_paid — "Terminada" es estado de entrega, no de pago
+        if estado_pago == "Pagada" and orden.balance_due > 0:
+            # Registrar el saldo restante como pago (evita órdenes fantasma)
+            pago_restante = OrderPayment(
+                tenant_id      = tenant_id,
+                order_id       = orden.id,
+                order_number   = orden.order_number,
+                user_id        = orden.user_id,
+                user_name      = orden.user_name,
+                payment_method = metodo_pago or "Efectivo",
+                amount         = orden.balance_due,
+            )
+            db.add(pago_restante)
+            orden.balance_due = 0.0
             orden.is_paid = True
-            if estado == "Terminada" or estado_pago == "Pagada":
-                orden.balance_due = 0.0
+        elif orden.balance_due <= 0:
+            orden.is_paid = True
         else:
             orden.is_paid = False
 

@@ -15,7 +15,9 @@
       "Bash(pip install *)",
       "Bash(python -)",
       "PowerShell(& \"C:\\\\Users\\\\david.vasquez\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python312\\\\python.exe\" -m venv venv)",
-      "mcp__railway-db__query"
+      "mcp__railway-db__query",
+      "Bash(python scripts/fix_historical_data.py)",
+      "Bash(python -u scripts/fix_historical_data.py)"
     ]
   }
 }

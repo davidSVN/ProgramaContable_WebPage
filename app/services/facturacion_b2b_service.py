@@ -49,13 +49,15 @@ class FacturaConsolidadaDTO:
     def from_orm(cls, fac: ConsolidatedInvoice, pagado: float) -> "FacturaConsolidadaDTO":
         user_name = fac.user.user_name if fac.user else f"ID {fac.user_id}"
         ordenes_ids = [o.id for o in fac.orders] if fac.orders else []
-        bd = round(max(0.0, float(fac.total_amount) - pagado), 2)
+        total = float(fac.total_amount)
+        pagado_capped = min(round(pagado, 2), total)
+        bd = round(max(0.0, total - pagado_capped), 2)
         return cls(
             invoice_id   = fac.id,
             user_id      = fac.user_id,
             user_name    = user_name,
-            total_amount = float(fac.total_amount),
-            pagado       = round(pagado, 2),
+            total_amount = total,
+            pagado       = pagado_capped,
             balance_due  = bd,
             is_paid      = fac.is_paid,
             notes        = fac.notes,
@@ -93,12 +95,25 @@ async def _cargar_factura_dto(
     )
     fac_full = res.unique().scalars().first()
 
+    # Pagos directamente vinculados a la factura
     res_pagado = await db.execute(
         select(func.sum(OrderPayment.amount)).where(
             OrderPayment.consolidated_invoice_id == factura.id
         )
     )
-    pagado = res_pagado.scalar() or 0.0
+    pagado = float(res_pagado.scalar() or 0.0)
+
+    # Pagos realizados por orden ANTES de la consolidación (consolidated_invoice_id IS NULL)
+    order_ids = [o.id for o in fac_full.orders] if fac_full.orders else []
+    if order_ids:
+        res_pre = await db.execute(
+            select(func.sum(OrderPayment.amount)).where(
+                OrderPayment.order_id.in_(order_ids),
+                OrderPayment.consolidated_invoice_id == None,  # noqa: E711
+            )
+        )
+        pagado += float(res_pre.scalar() or 0.0)
+
     return FacturaConsolidadaDTO.from_orm(fac_full, pagado)
 
 
@@ -223,9 +238,10 @@ async def crear_orden_b2b(
             db.add(detalle)
 
         # PASO 5: crear OrderPayment si hay abono o pago total
+        pago_inicial = None
         if abono > 0 or state_payment == "Pagada":
             monto_pago = order_value if state_payment == "Pagada" else abono
-            pago = OrderPayment(
+            pago_inicial = OrderPayment(
                 tenant_id      = tenant_id,
                 order_id       = orden.id,
                 order_number   = next_order_number,
@@ -234,15 +250,14 @@ async def crear_orden_b2b(
                 payment_method = payment_method or "N/A",
                 amount         = monto_pago,
             )
-            db.add(pago)
+            db.add(pago_inicial)
 
-        # PASO 6: gasto de agencia automático
+        # PASO 6: gasto de agencia automático (usa order_number para que la limpieza funcione)
         for s in servicios:
             if s.get("is_agency"):
                 svc_name = s.get("name", "Servicio")
-                # Truncar nombre_usuario para evitar exceder 100 caracteres en spent_general_name
-                nombre_gasto = f"Orden #{orden.id} - {svc_name} (Agencia)"[:100]
-                
+                nombre_gasto = f"Orden #{next_order_number} - {svc_name} (Agencia)"[:100]
+
                 gasto_agencia = SpentBusiness(
                     tenant_id            = tenant_id,
                     spent_date           = now_bogota,
@@ -250,22 +265,25 @@ async def crear_orden_b2b(
                     spent_general_name   = nombre_gasto,
                     spent_payment_method = "Nequi",
                     spent_value          = s["spent_per_service"],
-                    description          = f"Costo automático para {svc_name} en orden #{orden.id} - Cliente: {nombre_usuario}"
+                    description          = f"Costo automático para {svc_name} en orden #{next_order_number} - Cliente: {nombre_usuario}"
                 )
                 db.add(gasto_agencia)
 
         # PASO 7 (B2B exclusivo): si Pagada → crear ConsolidatedInvoice automática
+        # y vincular el pago del Paso 5 a esa factura para que el UX muestre pagado correcto
         if state_payment == "Pagada":
             factura_auto = ConsolidatedInvoice(
                 tenant_id    = tenant_id,
                 user_id      = user_id,
                 total_amount = order_value,
                 is_paid      = True,
-                notes        = f"Pago inmediato – Orden #{orden.id}",
+                notes        = f"Pago inmediato – Orden #{next_order_number}",
             )
             db.add(factura_auto)
             await db.flush()
             orden.consolidated_invoice_id = factura_auto.id
+            if pago_inicial is not None:
+                pago_inicial.consolidated_invoice_id = factura_auto.id
 
         await db.commit()
         await db.refresh(orden)
@@ -416,7 +434,7 @@ async def generar_factura_consolidada(
     if not ordenes:
         return "No se encontraron órdenes B2B válidas para consolidar (quizás ya están pagadas, consolidadas o no son de esta institución)."
 
-    total_due = sum(float(o.balance_due) for o in ordenes)
+    total_due = sum(float(o.total_amount) for o in ordenes)
 
     factura = ConsolidatedInvoice(
         tenant_id    = tenant_id,
@@ -468,10 +486,11 @@ async def listar_facturas_consolidadas(
     result = await db.execute(stmt)
     facturas = result.unique().scalars().all()
 
-    # Calcular pagado por factura en una sola query agregada
+    # Calcular pagado por factura en queries agregadas
     invoice_ids = [f.id for f in facturas]
     pagado_map: dict[int, float] = {}
     if invoice_ids:
+        # Pagos vinculados directamente a la factura
         res_pag = await db.execute(
             select(
                 OrderPayment.consolidated_invoice_id,
@@ -482,6 +501,23 @@ async def listar_facturas_consolidadas(
         )
         for row in res_pag.all():
             pagado_map[row.consolidated_invoice_id] = float(row.total_pagado or 0)
+
+        # Pagos realizados por orden ANTES de la consolidación (sin consolidated_invoice_id)
+        res_pre = await db.execute(
+            select(
+                OrderHeader.consolidated_invoice_id,
+                func.sum(OrderPayment.amount).label("total_pre"),
+            )
+            .join(OrderHeader, OrderPayment.order_id == OrderHeader.id)
+            .where(
+                OrderHeader.consolidated_invoice_id.in_(invoice_ids),
+                OrderPayment.consolidated_invoice_id == None,  # noqa: E711
+            )
+            .group_by(OrderHeader.consolidated_invoice_id)
+        )
+        for row in res_pre.all():
+            inv_id = row.consolidated_invoice_id
+            pagado_map[inv_id] = pagado_map.get(inv_id, 0.0) + float(row.total_pre or 0)
 
     return [
         FacturaConsolidadaDTO.from_orm(f, pagado_map.get(f.id, 0.0))
@@ -711,17 +747,19 @@ async def registrar_abono_institucional(
             )
             if tenant_id is not None:
                 stmt_ord = stmt_ord.where(OrderHeader.tenant_id == tenant_id)
-                
+
             res_ord = await db.execute(stmt_ord)
             ordenes_pendientes = res_ord.scalars().all()
 
             ordenes_afectadas = []
             saldo_usado_en_ordenes = 0.0
+            pagos_por_orden: dict[int, float] = {}  # order.id -> monto aplicado
 
             for ordn in ordenes_pendientes:
                 if float(usuario.saldo_a_favor) <= 0.01:
                     break
                 a_cobrar = min(float(ordn.balance_due), float(usuario.saldo_a_favor))
+                pagos_por_orden[ordn.id] = a_cobrar
                 ordn.balance_due = round(float(ordn.balance_due) - a_cobrar, 2)
                 usuario.saldo_a_favor = round(float(usuario.saldo_a_favor) - a_cobrar, 2)
                 saldo_usado_en_ordenes += a_cobrar
@@ -730,14 +768,13 @@ async def registrar_abono_institucional(
                     ordn.balance_due = 0.0
                 ordenes_afectadas.append(ordn)
 
-            # Si afectamos alguna orden individual: auto-agrupar en nueva factura
+            # Auto-agrupar en nueva factura cuyo total = saldo efectivamente aplicado
             if ordenes_afectadas:
-                total_factura = sum(float(o.total_amount) for o in ordenes_afectadas)
                 nueva_factura = ConsolidatedInvoice(
                     tenant_id    = tenant_id,
                     user_id      = user_id,
-                    total_amount = total_factura,
-                    is_paid      = all(o.is_paid for o in ordenes_afectadas),
+                    total_amount = saldo_usado_en_ordenes,
+                    is_paid      = True,
                     notes        = "Auto-agrupadas por Abono Automático en Billetera",
                 )
                 db.add(nueva_factura)
@@ -746,16 +783,19 @@ async def registrar_abono_institucional(
                 for o in ordenes_afectadas:
                     o.consolidated_invoice_id = nueva_factura.id
 
-                # Registrar el pago correspondiente a la nueva factura
-                pago_auto = OrderPayment(
-                    tenant_id               = tenant_id,
-                    consolidated_invoice_id = nueva_factura.id,
-                    user_id                 = user_id,
-                    user_name               = usuario.user_name,
-                    payment_method          = "Billetera Automática (Abono)",
-                    amount                  = saldo_usado_en_ordenes,
-                )
-                db.add(pago_auto)
+                # Un OrderPayment por orden (con order_id) para trazabilidad cash-basis
+                for o in ordenes_afectadas:
+                    pago_ord = OrderPayment(
+                        tenant_id               = tenant_id,
+                        consolidated_invoice_id = nueva_factura.id,
+                        order_id                = o.id,
+                        order_number            = o.order_number,
+                        user_id                 = user_id,
+                        user_name               = usuario.user_name,
+                        payment_method          = "Billetera Automática (Abono)",
+                        amount                  = pagos_por_orden[o.id],
+                    )
+                    db.add(pago_ord)
 
         await db.flush()
         await db.commit()

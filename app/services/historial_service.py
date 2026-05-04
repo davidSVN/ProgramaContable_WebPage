@@ -246,8 +246,10 @@ async def obtener_stats_historial(
 
     # Now define specific statements using the filtered base
     count_stmt = select(func.count(OrderHeader.id)).where(*filters)
-    # total_recaudado = sum(net_income_value) as requested
-    recaudado_stmt = select(func.sum(OrderHeader.net_income_value)).where(*filters)
+    recaudado_stmt = select(func.sum(OrderHeader.net_income_value)).where(
+        *filters,
+        OrderHeader.order_status != 'Cancelada'
+    )
     
     deuda_count_stmt = select(func.count(OrderHeader.id)).where(
         *filters,
