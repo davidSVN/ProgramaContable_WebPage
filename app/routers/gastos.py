@@ -2,7 +2,7 @@ from typing import List, Optional
 from datetime import date
 
 from fastapi import APIRouter, Depends, Query, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -42,6 +42,39 @@ def _build_filtros(
         fecha_inicio=fecha_inicio,
         fecha_fin=fecha_fin,
     )
+
+
+@router.get("/categorias", response_model=List[str])
+async def listar_categorias(
+    current_user: AppUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Lista las categorías de gasto disponibles para este tenant.
+    Combina las categorías por defecto del sistema con cualquier categoría
+    personalizada que el tenant ya haya usado en sus gastos. La lista se
+    auto-actualiza: cuando el usuario crea un gasto con una categoría nueva,
+    aparece aquí en la próxima carga.
+    """
+    DEFAULT_CATEGORIAS = [
+        "Nómina", "Servicios Públicos", "Arriendo", "Préstamos",
+        "Papelería", "Publicidad", "Otros", "Agencia",
+    ]
+
+    stmt = (
+        select(SpentBusiness.spent_category)
+        .where(SpentBusiness.tenant_id == current_user.tenant_id)
+        .where(SpentBusiness.spent_category.isnot(None))
+        .where(SpentBusiness.spent_category != "")
+        .distinct()
+    )
+    res = await db.execute(stmt)
+    existentes = [row[0] for row in res.all() if row[0]]
+
+    # Mezcla preservando orden: primero defaults, luego personalizadas no
+    # presentes en defaults, ordenadas alfabéticamente.
+    extras = sorted([c for c in existentes if c not in DEFAULT_CATEGORIAS])
+    return DEFAULT_CATEGORIAS + extras
 
 
 @router.get("/stats", response_model=GastoStatsResponse)

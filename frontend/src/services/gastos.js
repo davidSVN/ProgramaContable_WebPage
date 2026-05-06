@@ -9,6 +9,12 @@ export const getGastosCount = (params) =>
 export const getGastosStats = (params) =>
   api.get(`/gastos/stats?${new URLSearchParams(params)}`);
 
+/**
+ * GET /gastos/categorias → string[]
+ * Lista categorías disponibles (defaults + las que el tenant ya usó).
+ */
+export const getGastoCategorias = () => api.get('/gastos/categorias');
+
 export const getGastosAgencia = (params) =>
   api.get(`/gastos/agencia?${new URLSearchParams(params)}`);
 
