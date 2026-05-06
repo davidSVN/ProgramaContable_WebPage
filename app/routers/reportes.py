@@ -138,9 +138,13 @@ async def reporte_financiero(
     )
 
     # Dinero pendiente de cobro de las órdenes creadas dentro del periodo
-    # seleccionado. Para "todo" inicio_actual=2000-01-01 y fin_actual=now,
+    # seleccionado, junto con el costo de agencia asociado a esas órdenes
+    # pendientes. Para "todo" inicio_actual=2000-01-01 y fin_actual=now,
     # por lo que efectivamente no filtra y devuelve el histórico completo.
-    stmt_facturas = select(func.coalesce(func.sum(OrderHeader.balance_due), 0)).where(
+    stmt_pendiente = select(
+        func.coalesce(func.sum(OrderHeader.balance_due), 0).label("balance"),
+        func.coalesce(func.sum(OrderHeader.spent_per_order), 0).label("spent"),
+    ).where(
         OrderHeader.tenant_id == current_user.tenant_id,
         OrderHeader.is_paid == False,
         OrderHeader.order_status != "Cancelada",
@@ -148,14 +152,20 @@ async def reporte_financiero(
         OrderHeader.date >= inicio_actual,
         OrderHeader.date <= fin_actual,
     )
-    facturas_por_cobrar = float((await db.execute(stmt_facturas)).scalar())
+    row_pend = (await db.execute(stmt_pendiente)).one()
+    facturas_por_cobrar = float(row_pend.balance or 0)
+    # "Me deben neto": lo que falta cobrar menos los costos de agencia que
+    # corresponden a esas órdenes pendientes (lo que realmente entra al bolsillo
+    # cuando me paguen). Métrica independiente — no afecta ingresos/egresos/neto.
+    me_deben_neto = facturas_por_cobrar - float(row_pend.spent or 0)
 
     # Transformación para el frontend (IAReportes.jsx)
     return {
         "ingresos": raw_res["periodo_actual"]["ingresos"],
         "egresos": raw_res["periodo_actual"]["egresos"],
         "neto": raw_res["periodo_actual"]["neto"],
-        "facturas_por_cobrar": float(facturas_por_cobrar),
+        "facturas_por_cobrar": facturas_por_cobrar,
+        "me_deben_neto": me_deben_neto,
         "vs_anterior": {
             "ingresos_pct": raw_res["cambio_pct"]["ingresos"],
             "egresos_pct": raw_res["cambio_pct"]["egresos"],
