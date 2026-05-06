@@ -3,13 +3,18 @@ import {
   getGastos, getGastosCount, getGastosStats,
   getGastosAgencia, getGastosAgenciaCount,
   createGasto, updateGasto, deleteGasto,
+  getGastoCategorias,
 } from '../../../services/gastos';
 import './GastosNegocio.css';
 import { BlockedAction } from '../../ui/BlockedAction';
 
 /* ── Constants ─────────────────────────────────────────────────────────────── */
 const MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
-const CATEGORIAS = ['Nómina','Servicios Públicos','Arriendo','Préstamos','Papelería','Publicidad','Otros'];
+// Categorías por defecto. La lista efectiva se construye en runtime
+// fusionando estos valores con las categorías personalizadas que el tenant
+// haya usado (ver estado `categorias` y endpoint /gastos/categorias).
+const CATEGORIAS_DEFAULT = ['Nómina','Servicios Públicos','Arriendo','Préstamos','Papelería','Publicidad','Otros'];
+const CATEGORIAS = CATEGORIAS_DEFAULT;
 const METODOS = ['Efectivo','Transferencia','Nequi','Daviplata','Tarjeta'];
 const CAT_COLORS = {
   'Nómina':             '#2B7FFF',
@@ -320,6 +325,16 @@ export default function GastosNegocio({ user }) {
   const [newErrors,setNewErrors]= useState({});
   const [isAdding, setIsAdding] = useState(false);
 
+  /* ── Categorías dinámicas (defaults + personalizadas del tenant) ────────── */
+  const [categorias, setCategorias] = useState(CATEGORIAS_DEFAULT);
+  const fetchCategorias = useCallback(async () => {
+    try {
+      const list = await getGastoCategorias();
+      if (Array.isArray(list) && list.length) setCategorias(list);
+    } catch { /* fallback a defaults */ }
+  }, []);
+  useEffect(() => { fetchCategorias(); }, [fetchCategorias]);
+
   /* ── Agencia ────────────────────────────────────────────────────────────── */
   const [agencia,        setAgencia]        = useState([]);
   const [agenciaTotal,   setAgenciaTotal]   = useState(0);
@@ -455,8 +470,9 @@ export default function GastosNegocio({ user }) {
 
     setIsAdding(true);
     try {
+      const categoriaTrim = (newGasto.spent_category || '').trim();
       await createGasto({
-        spent_category:        newGasto.spent_category,
+        spent_category:        categoriaTrim,
         spent_general_name:    newGasto.spent_general_name.trim(),
         spent_value:           v,
         spent_payment_method:  newGasto.spent_payment_method,
@@ -465,6 +481,11 @@ export default function GastosNegocio({ user }) {
       });
       setNewGasto(EMPTY_FORM);
       setNewErrors({});
+      // Si la categoría usada es nueva, refrescamos la lista para que
+      // aparezca en el dropdown la próxima vez sin tener que recargar.
+      if (categoriaTrim && !categorias.includes(categoriaTrim)) {
+        fetchCategorias();
+      }
       showToast('Gasto registrado exitosamente', 'success', '✓');
       const pg = { ...gastosPag, page: 1 };
       setGastosPag(pg);
@@ -492,8 +513,9 @@ export default function GastosNegocio({ user }) {
   const cancelEdit = () => { setEditingId(null); setEditValues({}); setEditError(null); };
   const saveEdit = async (id) => {
     try {
+      const catTrim = (editValues.spent_category || '').trim();
       const updated = await updateGasto(id, {
-        spent_category:       editValues.spent_category,
+        spent_category:       catTrim,
         spent_general_name:   editValues.spent_general_name,
         spent_value:          parseFloat(editValues.spent_value),
         spent_payment_method: editValues.spent_payment_method,
@@ -502,6 +524,8 @@ export default function GastosNegocio({ user }) {
       setEditingId(null);
       setEditValues({});
       setEditError(null);
+      // Refrescar categorías si la editada es una nueva
+      if (catTrim && !categorias.includes(catTrim)) fetchCategorias();
       showToast('Gasto actualizado', 'success', '✓');
       fetchStats();
     } catch (err) {
@@ -637,15 +661,17 @@ export default function GastosNegocio({ user }) {
                   <div className="gn-form-row gn-form-row--2">
                     <div className="gn-field">
                       <label className="gn-label">Categoría *</label>
-                      <select
-                        className={`gn-select${newErrors.spent_category ? ' gn-input--error' : ''}`}
+                      <input
+                        list="gn-categorias-list"
+                        className={`gn-input${newErrors.spent_category ? ' gn-input--error' : ''}`}
+                        placeholder="Selecciona o escribe una nueva…"
                         value={newGasto.spent_category}
                         onChange={e => { setNewGasto(v => ({ ...v, spent_category: e.target.value })); setNewErrors(v => ({ ...v, spent_category: false })); }}
                         tabIndex={1}
-                      >
-                        <option value="">Selecciona…</option>
-                        {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
+                      />
+                      <datalist id="gn-categorias-list">
+                        {categorias.map(c => <option key={c} value={c} />)}
+                      </datalist>
                     </div>
                     <div className="gn-field">
                       <label className="gn-label">Nombre / Concepto *</label>
@@ -726,7 +752,7 @@ export default function GastosNegocio({ user }) {
                     <select className="gn-select gn-select--sm" value={gastosFilters.categoria}
                       onChange={e => updateGastosFilter('categoria', e.target.value)}>
                       <option value="">Todas</option>
-                      {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
+                      {categorias.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                   </div>
                   <div className="gn-filter-group">
@@ -790,11 +816,14 @@ export default function GastosNegocio({ user }) {
                             {/* Categoría */}
                             <td className="gn-td">
                               {isEdit
-                                ? <select className="gn-inline-select"
-                                    value={editValues.spent_category}
-                                    onChange={e => setEditValues(v => ({ ...v, spent_category: e.target.value }))}>
-                                    {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
-                                  </select>
+                                ? <>
+                                    <input list="gn-categorias-list-edit" className="gn-inline-select"
+                                      value={editValues.spent_category}
+                                      onChange={e => setEditValues(v => ({ ...v, spent_category: e.target.value }))} />
+                                    <datalist id="gn-categorias-list-edit">
+                                      {categorias.map(c => <option key={c} value={c} />)}
+                                    </datalist>
+                                  </>
                                 : <CatPill cat={g.spent_category} />}
                             </td>
 
