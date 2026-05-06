@@ -255,20 +255,24 @@ class MLEngine:
             return df[mask]
 
         def _ingresos(df):
-            """Suma net_income_value solo de órdenes completamente pagadas."""
+            """Suma total_amount (bruto cobrado) de órdenes completamente pagadas.
+            Usamos total_amount (no net_income_value) para que el costo de
+            agencia aparezca en el lado de egresos, no descontado del ingreso.
+            """
             if df.empty:
                 return 0.0
             if "is_paid" in df.columns:
                 df = df[df["is_paid"] == True]
-            return float(df["net_income_value"].sum()) if not df.empty else 0.0
+            return float(df["total_amount"].sum()) if not df.empty else 0.0
 
         def _egresos(df):
-            """Suma spent_value excluyendo agencia (ya descontada en net_income_value)."""
+            """Suma TODOS los spent_value, INCLUYENDO la categoría 'Agencia'.
+            La agencia es un egreso real del negocio (pago a proveedores
+            externos) y debe contabilizarse como tal.
+            """
             if df.empty:
                 return 0.0
-            if "spent_category" in df.columns:
-                df = df[df["spent_category"] != "Agencia"]
-            return float(df["spent_value"].sum()) if not df.empty else 0.0
+            return float(df["spent_value"].sum())
 
         # Current period
         ord_actual = filtrar(orders_df, "created_at", *periodo_actual)

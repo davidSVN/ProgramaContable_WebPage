@@ -794,10 +794,22 @@ async def entregar_orden(
     orden.delivered_at = datetime.now()
     orden.delivered_by = current_user.username
     
-    # Si se entregó factura física, los datos de recibo son los mismos del cliente
+    # Si se entregó factura física, los datos del receptor coinciden con el cliente.
+    # received_by_cedula debe ser la cédula real del cliente (de LaundryUser.nit
+    # si la tienen registrada) — NUNCA el user_id interno del sistema, que era
+    # lo que hacía el código anterior (bug: guardaba un ID como si fuera cédula).
     if data.invoice_delivered:
         orden.received_by_name = orden.user_name
-        orden.received_by_cedula = str(orden.user_id) if orden.user_id else None
+        if orden.user_id:
+            from sqlalchemy import select as sa_select
+            from app.models import LaundryUser as _LU
+            res_cli = await db.execute(
+                sa_select(_LU.nit).where(_LU.user_id == orden.user_id)
+            )
+            nit_cliente = res_cli.scalar()
+            orden.received_by_cedula = nit_cliente or None
+        else:
+            orden.received_by_cedula = None
     else:
         # Si NO se entregó factura, guardamos lo que venga del frontend
         if data.received_by_name:
