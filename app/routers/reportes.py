@@ -182,9 +182,11 @@ async def reporte_ordenes_resumen(
 
     gastos_df = await _get_gastos_df(db, current_user.tenant_id, fecha_inicio, fecha_fin)
     orders_validas = orders_df[orders_df["order_status"] != "Cancelada"] if not orders_df.empty else orders_df
-    ingresos = orders_validas["net_income_value"].sum()
-    gastos_sin_agencia = gastos_df[gastos_df["spent_category"] != "Agencia"] if not gastos_df.empty else gastos_df
-    egresos = gastos_sin_agencia["spent_value"].sum() if not gastos_sin_agencia.empty else 0
+    # Ingresos: total_amount bruto (no net_income_value) para que el costo
+    # de agencia aparezca en egresos, no descontado del ingreso.
+    ingresos = orders_validas["total_amount"].sum()
+    # Egresos: TODOS los gastos, incluyendo categoría 'Agencia'.
+    egresos = gastos_df["spent_value"].sum() if not gastos_df.empty else 0
     
     # Cálculos adicionales para el frontend
     ordenes_debe = len(orders_df[orders_df["is_paid"] == False])
