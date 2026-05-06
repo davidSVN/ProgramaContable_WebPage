@@ -290,12 +290,24 @@ async def crear_orden(
         subtotal      = sum(s["value"] * s["qty"] for s in servicios)
         order_value   = round(subtotal - discount_value, 2)
         net_income    = round(order_value - total_spent_per_order, 2)
-        abono_total   = sum(p["monto"] for p in pagos)
+        abono_total   = round(sum(p["monto"] for p in pagos), 2)
+
+        # Validación de sobrepago: rechazar antes de crear nada
+        if abono_total > order_value:
+            return (
+                f"El total de abonos (${abono_total:,.2f}) excede el valor de la "
+                f"orden (${order_value:,.2f}). Corrija los abonos antes de continuar."
+            )
 
         if state_payment == "Pagada":
             restante = 0.0
+            is_paid_final = True
         else:
             restante = max(0.0, round(order_value - abono_total, 2))
+            # Si los abonos cubren el total exacto, marcar como pagada
+            # aunque el frontend haya enviado state_payment="Debe"
+            # (evita "ingresos fantasma" por error de captura del empleado).
+            is_paid_final = (abono_total >= order_value)
 
         # ── PASO 3: crear OrderHeader ──────────────────────────────────────────
         max_order_query = select(func.max(OrderHeader.order_number)).where(OrderHeader.tenant_id == tenant_id)
@@ -311,7 +323,7 @@ async def crear_orden(
             user_name         = nombre_usuario,
             date              = now_bogota,
             order_status      = state_state,
-            is_paid           = (state_payment == "Pagada"),
+            is_paid           = is_paid_final,
             subtotal          = subtotal,
             discount          = discount_value,
             total_amount      = order_value,

@@ -137,14 +137,16 @@ async def reporte_financiero(
         (inicio_anterior, fin_anterior)
     )
 
-    # Todo el dinero pendiente de cobro: suma balance_due de todas las órdenes
-    # activas sin importar si son B2C o B2B (consolidated_invoices.balance_due
-    # ya está reflejado en orders.balance_due para órdenes vinculadas)
+    # Dinero pendiente de cobro de las órdenes creadas dentro del periodo
+    # seleccionado. Para "todo" inicio_actual=2000-01-01 y fin_actual=now,
+    # por lo que efectivamente no filtra y devuelve el histórico completo.
     stmt_facturas = select(func.coalesce(func.sum(OrderHeader.balance_due), 0)).where(
         OrderHeader.tenant_id == current_user.tenant_id,
         OrderHeader.is_paid == False,
         OrderHeader.order_status != "Cancelada",
         OrderHeader.balance_due > 0,
+        OrderHeader.date >= inicio_actual,
+        OrderHeader.date <= fin_actual,
     )
     facturas_por_cobrar = float((await db.execute(stmt_facturas)).scalar())
 
