@@ -178,6 +178,14 @@ class OrderDetail(Base):
     description = Column(Text, nullable=True)
     tenant = relationship("Tenant")
     order = relationship("OrderHeader", back_populates="details")
+    # Relación inversa al gasto de agencia auto-generado.
+    # uselist=False porque hay 1 SpentBusiness por OrderDetail (cuando is_agency=true).
+    agency_spent = relationship(
+        "SpentBusiness",
+        back_populates="order_detail",
+        uselist=False,
+        foreign_keys="SpentBusiness.order_detail_id",
+    )
 
 
 class OrderPayment(Base):
@@ -234,7 +242,19 @@ class SpentBusiness(Base):
     description = Column(Text)
     spent_payment_method = Column(String(50), nullable=False)
     spent_value = Column(Float, nullable=False)
+    # FK al detalle de orden que generó este gasto (solo se llena para
+    # gastos de categoría 'Agencia' creados desde el flujo de órdenes).
+    # NULL para gastos manuales y para gastos históricos pre-deploy.
+    order_detail_id = Column(
+        Integer, ForeignKey("order_details.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
     tenant = relationship("Tenant")
+    order_detail = relationship(
+        "OrderDetail",
+        back_populates="agency_spent",
+        foreign_keys=[order_detail_id],
+    )
 
 
 class ProductFromProvider(Base):

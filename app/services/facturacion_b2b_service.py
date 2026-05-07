@@ -218,6 +218,8 @@ async def crear_orden_b2b(
         await db.flush()  # obtener orden.id
 
         # PASO 4: crear OrderDetail por cada servicio
+        # Mantenemos la lista para vincular SpentBusiness vía FK en paso 6.
+        detalles_creados: list[tuple[OrderDetail, dict]] = []
         for s in servicios:
             agency_done = (now_bogota + timedelta(days=7)).date() if s.get("is_agency") else None
             detalle = OrderDetail(
@@ -236,6 +238,10 @@ async def crear_orden_b2b(
                 description      = s.get("description"),
             )
             db.add(detalle)
+            detalles_creados.append((detalle, s))
+
+        # Flush para que cada detalle reciba su id antes del paso 6.
+        await db.flush()
 
         # PASO 5: crear OrderPayment si hay abono o pago total
         pago_inicial = None
@@ -252,8 +258,8 @@ async def crear_orden_b2b(
             )
             db.add(pago_inicial)
 
-        # PASO 6: gasto de agencia automático (usa order_number para que la limpieza funcione)
-        for s in servicios:
+        # PASO 6: gasto de agencia automático (vinculado por FK al detalle)
+        for detalle, s in detalles_creados:
             if s.get("is_agency"):
                 svc_name = s.get("name", "Servicio")
                 nombre_gasto = f"Orden #{next_order_number} - {svc_name} (Agencia)"[:100]
@@ -265,7 +271,8 @@ async def crear_orden_b2b(
                     spent_general_name   = nombre_gasto,
                     spent_payment_method = "Nequi",
                     spent_value          = s["spent_per_service"],
-                    description          = f"Costo automático para {svc_name} en orden #{next_order_number} - Cliente: {nombre_usuario}"
+                    description          = f"Costo automático para {svc_name} en orden #{next_order_number} - Cliente: {nombre_usuario}",
+                    order_detail_id      = detalle.id,
                 )
                 db.add(gasto_agencia)
 

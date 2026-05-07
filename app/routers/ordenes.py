@@ -28,6 +28,8 @@ from app.schemas import (
     OrderStatsResponse,
     EntregarOrdenRequest,
     EntregarOrdenResponse,
+    OrderDetailPatchRequest,
+    OrderDetailPatchResponse,
     RegistrarPagoRequest,
 )
 from datetime import datetime
@@ -852,6 +854,38 @@ async def entregar_orden(
         received_by_cedula=orden.received_by_cedula,
         invoice_delivered=orden.invoice_delivered,
         has_signature=bool(orden.delivery_signature)
+    )
+
+
+# ── 8b. PATCH /ordenes/{order_id}/detalles/{detail_id} ──────────────────────
+@router.patch("/{order_id}/detalles/{detail_id}", response_model=OrderDetailPatchResponse)
+async def actualizar_detalle_orden(
+    order_id: int,
+    detail_id: int,
+    data: OrderDetailPatchRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: AppUser = Depends(get_current_user),
+):
+    """
+    Edita un detalle de orden (is_agency, costo agencia, precio, cantidad,
+    etc.) y sincroniza automáticamente el SpentBusiness de agencia
+    correspondiente. Recalcula los totales del header.
+    """
+    payload = data.model_dump(exclude_unset=True)
+    resultado = await service.actualizar_detalle_orden(
+        db        = db,
+        tenant_id = current_user.tenant_id,
+        order_id  = order_id,
+        detail_id = detail_id,
+        payload   = payload,
+    )
+    if isinstance(resultado, str):
+        raise HTTPException(status_code=400, detail=resultado)
+
+    orden_dto, warnings = resultado
+    return OrderDetailPatchResponse(
+        orden    = _orden_dto_to_dict(orden_dto),
+        warnings = warnings,
     )
 
 

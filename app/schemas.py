@@ -359,6 +359,27 @@ class RegistrarPagoRequest(BaseModel):
     metodo_pago: str
 
 
+class OrderDetailPatchRequest(BaseModel):
+    """Patch parcial sobre un OrderDetail (todos los campos opcionales).
+    Editar `is_agency` o `spent_per_order` dispara auto-sync de
+    SpentBusiness; editar `unit_price`/`quantity` recalcula totales del header.
+    """
+    is_agency:        Optional[bool]  = None
+    spent_per_order:  Optional[float] = None
+    unit_price:       Optional[float] = None
+    quantity:         Optional[float] = None
+    description:      Optional[str]   = None
+    service_name:     Optional[str]   = None
+
+
+class OrderDetailPatchResponse(BaseModel):
+    """Response del PATCH: orden completa + warnings opcionales."""
+    orden: "OrdenResponse"
+    warnings: _List2[str] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class OrdenResponse(BaseModel):
     order_id: int
     order_number: Optional[int] = None
@@ -387,12 +408,14 @@ class OrdenResponse(BaseModel):
 
 
 class DetalleOrdenResponse(BaseModel):
+    id: Optional[int] = None  # OrderDetail.id — necesario para PATCH retroactivo
     name: str
     qty: float
     value: float
     is_agency: bool
     description: Optional[str] = None
     spent_per_service: Optional[float] = 0.0
+    spent_per_order: Optional[float] = 0.0  # costo de agencia almacenado en el detalle
 
 
 class OrderDetailFlatResponse(BaseModel):

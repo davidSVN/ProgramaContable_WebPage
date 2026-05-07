@@ -338,6 +338,9 @@ async def crear_orden(
         await db.flush()  # obtener orden.id
 
         # ── PASO 4: crear OrderDetail por cada servicio ────────────────────────
+        # Mantenemos la lista de detalles creados para poder vincular el
+        # SpentBusiness de agencia (paso 6) con su detail.id vía FK.
+        detalles_creados: list[tuple[OrderDetail, dict]] = []
         for s in servicios:
             agency_done = (now_bogota + timedelta(days=7)).date() if s.get("is_agency") else None
             detalle = OrderDetail(
@@ -356,6 +359,11 @@ async def crear_orden(
                 description      = s.get("description"),
             )
             db.add(detalle)
+            detalles_creados.append((detalle, s))
+
+        # Flush para que cada detalle reciba su `id` antes de crear los
+        # SpentBusiness vinculados en el paso 6.
+        await db.flush()
 
         # ── PASO 5: crear OrderPayment(s) ─────────────────────────────────────
         if state_payment == "Pagada":
@@ -385,12 +393,15 @@ async def crear_orden(
                     ))
 
         # ── PASO 6: gasto de agencia automático ───────────────────────────────
-        for s in servicios:
+        # Vinculamos el SpentBusiness con el OrderDetail vía FK
+        # (order_detail_id) para que la edición retroactiva pueda encontrarlo
+        # sin ambigüedades de string match.
+        for detalle, s in detalles_creados:
             if s.get("is_agency"):
                 svc_name = s.get("name", "Servicio")
                 # Truncar para evitar DataError en spent_general_name (max 100)
                 nombre_gasto = f"Orden #{next_order_number} - {svc_name} (Agencia)"[:100]
-                
+
                 gasto_agencia = SpentBusiness(
                     tenant_id            = tenant_id,
                     spent_date           = now_bogota,
@@ -398,7 +409,8 @@ async def crear_orden(
                     spent_general_name   = nombre_gasto,
                     spent_payment_method = "Nequi",
                     spent_value          = s["spent_per_service"],
-                    description          = f"Costo automático para {svc_name} en orden #{next_order_number} - Cliente: {nombre_usuario}"
+                    description          = f"Costo automático para {svc_name} en orden #{next_order_number} - Cliente: {nombre_usuario}",
+                    order_detail_id      = detalle.id,
                 )
                 db.add(gasto_agencia)
 
@@ -585,6 +597,215 @@ async def actualizar_estado(
         return f"Error al actualizar orden: {exc}"
 
 
+async def actualizar_detalle_orden(
+    db: AsyncSession,
+    tenant_id: int,
+    order_id: int,
+    detail_id: int,
+    payload: dict,
+) -> "tuple[OrdenDTO, list[str]] | str":
+    """Edita un OrderDetail y sincroniza el SpentBusiness de agencia.
+
+    Devuelve `(OrdenDTO, warnings)` o un str con mensaje de error.
+
+    Transiciones de `is_agency` que sincroniza con SpentBusiness:
+      - F → T: crea SpentBusiness con FK al detail.
+      - T → F: borra el SpentBusiness vinculado.
+      - T → T con valor cambiado: actualiza spent_value/nombre.
+
+    Recalcula los totales del header (subtotal, total_amount, balance_due,
+    spent_per_order, agency_cost, net_income_value) tras cualquier cambio
+    estructural. Mantiene los OrderPayments intactos.
+    """
+    from sqlalchemy.orm import selectinload
+    warnings: list[str] = []
+
+    try:
+        # 1. Cargar detalle + orden + agency_spent + payments
+        res = await db.execute(
+            select(OrderDetail)
+            .options(selectinload(OrderDetail.agency_spent))
+            .where(OrderDetail.id == detail_id)
+            .where(OrderDetail.order_id == order_id)
+        )
+        detalle = res.scalars().first()
+        if not detalle:
+            return f"Detalle #{detail_id} no encontrado en orden #{order_id}."
+
+        if tenant_id is not None and detalle.tenant_id != tenant_id:
+            return "Detalle no pertenece a este tenant."
+
+        res_o = await db.execute(
+            select(OrderHeader)
+            .options(
+                selectinload(OrderHeader.payments),
+                selectinload(OrderHeader.details),
+            )
+            .where(OrderHeader.id == order_id)
+        )
+        orden = res_o.scalars().first()
+        if not orden:
+            return f"Orden #{order_id} no encontrada."
+
+        if tenant_id is not None and orden.tenant_id != tenant_id:
+            return "Orden no pertenece a este tenant."
+
+        # 2. Guardas
+        if orden.order_status == "Cancelada":
+            return "No se puede editar una orden cancelada."
+        if orden.consolidated_invoice_id is not None:
+            return "Esta orden está consolidada en una factura B2B; edítela desde el flujo B2B."
+        if orden.order_status == "Entregada":
+            warnings.append("entregada")
+
+        # 3. Capturar valores previos
+        prev_is_agency = bool(detalle.is_agency)
+        prev_spent     = float(detalle.spent_per_order or 0)
+        prev_unit      = float(detalle.unit_price or 0)
+        prev_qty       = float(detalle.quantity or 0)
+        prev_total     = float(orden.total_amount or 0)
+        was_paid       = bool(orden.is_paid)
+
+        # 4. Aplicar cambios al detalle
+        if "is_agency" in payload and payload["is_agency"] is not None:
+            detalle.is_agency = bool(payload["is_agency"])
+        if "spent_per_order" in payload and payload["spent_per_order"] is not None:
+            detalle.spent_per_order = float(payload["spent_per_order"])
+        if "unit_price" in payload and payload["unit_price"] is not None:
+            detalle.unit_price = float(payload["unit_price"])
+        if "quantity" in payload and payload["quantity"] is not None:
+            new_qty = float(payload["quantity"])
+            if new_qty <= 0:
+                return "La cantidad debe ser mayor que 0."
+            detalle.quantity = new_qty
+        if "description" in payload and payload["description"] is not None:
+            detalle.description = payload["description"]
+        if "service_name" in payload and payload["service_name"] is not None:
+            detalle.service_name = payload["service_name"][:100]
+
+        # Recalcular total_item_price del detalle
+        detalle.total_item_price = round(
+            float(detalle.unit_price or 0) * float(detalle.quantity or 0), 2
+        )
+
+        # Si se marca agencia pero no se mandó spent_per_order, conservar
+        # el valor actual; si era 0 quedará 0 (la UI lo flagea naranja).
+        if detalle.is_agency:
+            # Asegurar que agency_done_date exista
+            if detalle.agency_done_date is None:
+                from datetime import timedelta as _td
+                base = orden.date or datetime.now(BOGOTA_TZ).replace(tzinfo=None)
+                detalle.agency_done_date = (base + _td(days=7)).date() if hasattr(base, "date") else None
+        else:
+            # Si ya no es agencia, el costo de agencia debe ser 0
+            detalle.spent_per_order = 0.0
+
+        # 5. Sincronizar SpentBusiness
+        new_is_agency = bool(detalle.is_agency)
+        new_spent     = float(detalle.spent_per_order or 0)
+        order_number  = orden.order_number
+        cliente_name  = orden.user_name or "Cliente"
+        nombre_gasto  = f"Orden #{order_number} - {detalle.service_name} (Agencia)"[:100]
+
+        if not prev_is_agency and new_is_agency:
+            # F → T: crear SpentBusiness solo si hay costo > 0
+            if new_spent > 0:
+                gasto = SpentBusiness(
+                    tenant_id            = orden.tenant_id,
+                    spent_date           = orden.date or datetime.now(BOGOTA_TZ).replace(tzinfo=None),
+                    spent_category       = "Agencia",
+                    spent_general_name   = nombre_gasto,
+                    spent_payment_method = "Nequi",
+                    spent_value          = new_spent,
+                    description          = f"Costo agencia retroactivo - Orden #{order_number} - {cliente_name}",
+                    order_detail_id      = detalle.id,
+                )
+                db.add(gasto)
+        elif prev_is_agency and not new_is_agency:
+            # T → F: borrar SpentBusiness vinculado
+            existing = detalle.agency_spent
+            if existing is not None:
+                await db.delete(existing)
+        elif prev_is_agency and new_is_agency:
+            # T → T: actualizar si cambió valor o nombre
+            existing = detalle.agency_spent
+            if existing is None and new_spent > 0:
+                # Caso histórico: era agencia pero no había FK → crearlo ahora
+                gasto = SpentBusiness(
+                    tenant_id            = orden.tenant_id,
+                    spent_date           = orden.date or datetime.now(BOGOTA_TZ).replace(tzinfo=None),
+                    spent_category       = "Agencia",
+                    spent_general_name   = nombre_gasto,
+                    spent_payment_method = "Nequi",
+                    spent_value          = new_spent,
+                    description          = f"Costo agencia (creado al editar) - Orden #{order_number}",
+                    order_detail_id      = detalle.id,
+                )
+                db.add(gasto)
+            elif existing is not None:
+                if abs(float(existing.spent_value or 0) - new_spent) > 0.01:
+                    existing.spent_value = new_spent
+                if existing.spent_general_name != nombre_gasto:
+                    existing.spent_general_name = nombre_gasto
+
+        # 6. Recalcular totales del header desde TODOS los detalles
+        await db.flush()
+        # Recargar detalles frescos
+        res_det = await db.execute(
+            select(OrderDetail).where(OrderDetail.order_id == orden.id)
+        )
+        all_details = res_det.scalars().all()
+
+        new_subtotal = round(sum(float(d.total_item_price or 0) for d in all_details), 2)
+        new_agency_cost = round(
+            sum(float(d.spent_per_order or 0) for d in all_details if d.is_agency), 2
+        )
+        new_total_amount = round(new_subtotal - float(orden.discount or 0), 2)
+
+        sum_payments = round(sum(float(p.amount or 0) for p in (orden.payments or [])), 2)
+        new_balance_due = round(max(0.0, new_total_amount - sum_payments), 2)
+
+        orden.subtotal         = new_subtotal
+        orden.total_amount     = new_total_amount
+        orden.spent_per_order  = new_agency_cost
+        orden.agency_cost      = new_agency_cost
+        orden.net_income_value = round(new_total_amount - new_agency_cost, 2)
+        orden.balance_due      = new_balance_due
+        # Re-evaluar is_paid de manera conservadora
+        if new_balance_due <= 0 and sum_payments >= new_total_amount - 0.01:
+            orden.is_paid = True
+        elif new_balance_due > 0 and was_paid:
+            # El cambio aumentó el total y la orden estaba marcada como pagada;
+            # mantener is_paid pero advertir.
+            warnings.append("total_cambio_pagada")
+
+        # 7. Commit y retornar
+        await db.commit()
+
+        # Recargar full
+        from sqlalchemy.orm import selectinload as _si
+        res_full = await db.execute(
+            select(OrderHeader)
+            .options(_si(OrderHeader.payments), _si(OrderHeader.details))
+            .where(OrderHeader.id == order_id)
+        )
+        orden_full = res_full.unique().scalars().first()
+
+        # User maps
+        cli_res = await db.execute(
+            select(LaundryUser).where(LaundryUser.user_id == orden_full.user_id)
+        )
+        cliente = cli_res.scalars().first()
+        user_map    = {orden_full.user_id: cliente.user_name if cliente else (orden_full.user_name or "Cliente")}
+        contact_map = {orden_full.user_id: (cliente.user_contact if cliente else None) or "—"}
+
+        return OrdenDTO.from_orm(orden_full, user_map, contact_map), warnings
+
+    except Exception as exc:
+        await db.rollback()
+        return f"Error al actualizar detalle: {exc}"
+
+
 async def obtener_detalle_orden(
     db: AsyncSession, tenant_id: int, order_id: int
 ) -> "list[dict] | str":
@@ -607,11 +828,13 @@ async def obtener_detalle_orden(
 
     return [
         {
+            "id":        d.id,
             "name":      d.service_name,
             "qty":       d.quantity,
             "value":     d.unit_price,
             "is_agency": d.is_agency,
             "description": d.description,
+            "spent_per_order": float(d.spent_per_order or 0),
         }
         for d in detalles
     ]

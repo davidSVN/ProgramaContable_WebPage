@@ -32,7 +32,23 @@ async def get_db():
 
 
 async def init_db():
-    """Crea todas las tablas definidas en los modelos."""
+    """Crea todas las tablas definidas en los modelos y aplica
+    micro-migraciones idempotentes para columnas agregadas in-place."""
     from app import models  # noqa: F401 — importa para registrar modelos en Base
+    from sqlalchemy import text
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+        # ── Micro-migraciones idempotentes (PostgreSQL) ───────────────────
+        # ADD COLUMN IF NOT EXISTS y CREATE INDEX IF NOT EXISTS son no-ops
+        # cuando ya existen, así que se pueden re-ejecutar al deploy.
+        await conn.execute(text("""
+            ALTER TABLE spents_business
+            ADD COLUMN IF NOT EXISTS order_detail_id INTEGER
+            REFERENCES order_details(id) ON DELETE SET NULL
+        """))
+        await conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS ix_spents_business_order_detail_id
+            ON spents_business(order_detail_id)
+        """))

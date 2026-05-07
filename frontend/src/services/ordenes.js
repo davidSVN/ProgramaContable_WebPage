@@ -48,3 +48,21 @@ export const entregarOrden = (id, data) => api.post(`/ordenes/${id}/entregar`, d
  * GET /ordenes/:id/detalle
  */
 export const getOrdenDetalle = (id) => api.get(`/ordenes/${id}/detalle`);
+
+/**
+ * GET /ordenes/detalles — flat list of order details with order_id and detail_id
+ */
+export const getOrdenesDetallesFlat = (params = {}) => {
+  const clean = Object.fromEntries(
+    Object.entries(params).filter(([, v]) => v !== '' && v !== null && v !== undefined)
+  );
+  return api.get(`/ordenes/detalles?${new URLSearchParams(clean)}`);
+};
+
+/**
+ * PATCH /ordenes/:order_id/detalles/:detail_id
+ * Body: { is_agency?, spent_per_order?, unit_price?, quantity?, description?, service_name? }
+ * Returns: { orden, warnings }
+ */
+export const updateOrderDetail = (orderId, detailId, data) =>
+  api.patch(`/ordenes/${orderId}/detalles/${detailId}`, data);
