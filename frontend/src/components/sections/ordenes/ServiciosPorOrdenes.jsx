@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { getOrderDetails, getOrderDetailsCount, getOrderDetailsStats } from '../../../services/serviciosPorOrdenes';
+import { updateOrderDetail } from '../../../services/ordenes';
 import './ServiciosPorOrdenes.css';
 
 // ── Formatters ────────────────────────────────────────────────────────────────
@@ -76,8 +77,63 @@ export default function ServiciosPorOrdenes() {
 
   const animTotal   = useCountUp(statsTotal);
   const animAgencia = useCountUp(statsAgencia);
-  const [valorTotalGlobal, setValorTotalGlobal] = useState(0); 
+  const [valorTotalGlobal, setValorTotalGlobal] = useState(0);
   const [valorIngresosGlobal, setValorIngresosGlobal] = useState(0);
+
+  // ── Edición inline de agencia ─────────────────────────────────────────────
+  const [savingDetailId, setSavingDetailId] = useState(null);
+  const [pendingSpent, setPendingSpent]     = useState({}); // { [detailId]: stringValue }
+  const [editToast, setEditToast]           = useState(null);
+
+  const showEditToast = (msg, type = 'info') => {
+    setEditToast({ msg, type });
+    setTimeout(() => setEditToast(null), 3000);
+  };
+
+  // Toggle is_agency en una fila (PATCH inmediato)
+  const toggleAgency = async (row, newValue) => {
+    if (savingDetailId) return;
+    setSavingDetailId(row.id);
+    // Actualización optimista
+    setDetails(prev => prev.map(d => d.id === row.id ? { ...d, is_agency: newValue } : d));
+    try {
+      const payload = { is_agency: newValue };
+      // Si se desmarca, mandamos también spent_per_order=0 (lo hace el backend, pero explícito)
+      if (!newValue) payload.spent_per_order = 0;
+      await updateOrderDetail(row.order_id, row.id, payload);
+      showEditToast(newValue ? '✓ Marcado como agencia' : '✓ Quitada marca de agencia', 'success');
+    } catch (err) {
+      // Revertir
+      setDetails(prev => prev.map(d => d.id === row.id ? { ...d, is_agency: row.is_agency } : d));
+      showEditToast(err.message || 'Error al actualizar', 'error');
+    } finally {
+      setSavingDetailId(null);
+    }
+  };
+
+  // Commit del costo de agencia (al blur o Enter)
+  const commitSpent = async (row) => {
+    const localVal = pendingSpent[row.id];
+    if (localVal === undefined) return;
+    const newSpent = Number(localVal) || 0;
+    if (Math.abs(newSpent - Number(row.spent_per_order || 0)) < 0.01) {
+      // No cambió
+      setPendingSpent(prev => { const c = { ...prev }; delete c[row.id]; return c; });
+      return;
+    }
+    setSavingDetailId(row.id);
+    setDetails(prev => prev.map(d => d.id === row.id ? { ...d, spent_per_order: newSpent } : d));
+    try {
+      await updateOrderDetail(row.order_id, row.id, { spent_per_order: newSpent });
+      setPendingSpent(prev => { const c = { ...prev }; delete c[row.id]; return c; });
+      showEditToast('✓ Costo de agencia actualizado', 'success');
+    } catch (err) {
+      setDetails(prev => prev.map(d => d.id === row.id ? { ...d, spent_per_order: row.spent_per_order } : d));
+      showEditToast(err.message || 'Error al guardar costo', 'error');
+    } finally {
+      setSavingDetailId(null);
+    }
+  };
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -310,17 +366,24 @@ export default function ServiciosPorOrdenes() {
                   <th className="spo-th-center">Cant.</th>
                   <th className="spo-th-right">Precio Unit.</th>
                   <th className="spo-th-right">Total</th>
-                  <th>Agencia</th>
+                  <th>🏭 Agencia</th>
+                  <th className="spo-th-right">Costo agencia</th>
                   <th>Estado Orden</th>
                 </tr>
               </thead>
               <tbody>
                 {details.map(row => {
                   const estadoCfg = ESTADO_CFG[row.order_status] || { bg: '#F5F0E8', color: '#888780' };
+                  const flagOrange = row.is_agency && (!row.spent_per_order || Number(row.spent_per_order) === 0);
+                  const isSaving = savingDetailId === row.id;
+                  const localSpent = pendingSpent[row.id];
+                  const spentValue = localSpent !== undefined ? localSpent : (row.spent_per_order ?? 0);
                   return (
                     <tr
                       key={row.id}
                       className={`spo-row ${row.is_agency ? 'spo-row--agency' : ''}`}
+                      style={flagOrange ? { borderLeft: '4px solid #F59E0B' } : undefined}
+                      title={flagOrange ? 'Marcado como agencia sin costo registrado — agrega el costo o desmarca.' : undefined}
                     >
                       <td className="spo-td-date">{fmtDate(row.date)}</td>
                       <td><span className="spo-order-id">#{row.order_number ?? row.order_id}</span></td>
@@ -331,9 +394,34 @@ export default function ServiciosPorOrdenes() {
                       <td className="spo-td-right spo-td-muted">{fmtCOP(row.unit_price)}</td>
                       <td className="spo-td-right spo-td-bold">{fmtCOP(row.total_item_price)}</td>
                       <td>
-                        <span className={`spo-pill ${row.is_agency ? 'spo-pill--agency' : 'spo-pill--own'}`}>
-                          {row.is_agency ? 'Agencia ↗' : 'Propio'}
-                        </span>
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: isSaving ? 'wait' : 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={!!row.is_agency}
+                            disabled={isSaving}
+                            onChange={e => toggleAgency(row, e.target.checked)}
+                          />
+                          <span className={`spo-pill ${row.is_agency ? 'spo-pill--agency' : 'spo-pill--own'}`}>
+                            {row.is_agency ? 'Agencia ↗' : 'Propio'}
+                          </span>
+                        </label>
+                      </td>
+                      <td className="spo-td-right">
+                        {row.is_agency ? (
+                          <input
+                            type="number"
+                            min="0"
+                            step="100"
+                            value={spentValue}
+                            disabled={isSaving}
+                            onChange={e => setPendingSpent(prev => ({ ...prev, [row.id]: e.target.value }))}
+                            onBlur={() => commitSpent(row)}
+                            onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+                            style={{ width: 90, padding: '4px 6px', border: '1px solid #DDD', borderRadius: 4, fontSize: 12, textAlign: 'right' }}
+                          />
+                        ) : (
+                          <span className="spo-td-muted">—</span>
+                        )}
                       </td>
                       <td>
                         <span
@@ -362,6 +450,22 @@ export default function ServiciosPorOrdenes() {
           onPage={p => setPagination(prev => ({ ...prev, page: p }))}
           onLimit={l => setPagination({ page: 1, limit: l })}
         />
+      )}
+
+      {/* Edit toast */}
+      {editToast && (
+        <div
+          style={{
+            position: 'fixed', bottom: 24, right: 24,
+            padding: '10px 16px', borderRadius: 8,
+            background: editToast.type === 'error' ? '#FEE2E2' : editToast.type === 'success' ? '#D1FAE5' : '#DBEAFE',
+            color:      editToast.type === 'error' ? '#991B1B' : editToast.type === 'success' ? '#065F46' : '#1E3A8A',
+            fontSize: 13, fontWeight: 500, zIndex: 1000,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+          }}
+        >
+          {editToast.msg}
+        </div>
       )}
     </div>
   );

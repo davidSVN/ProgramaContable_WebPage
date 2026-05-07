@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { getHistorialOrdenes, getOrdenesStats, deleteOrden, updateOrdenEstado, entregarOrden, getOrdenDetalle } from '../../../services/ordenes';
+import { getHistorialOrdenes, getOrdenesStats, deleteOrden, updateOrdenEstado, entregarOrden, getOrdenDetalle, updateOrderDetail } from '../../../services/ordenes';
 import PrintInvoice from '../../ui/PrintInvoice';
 import { printOrden, isPrintAvailable } from '../../../services/print';
 import './HistorialOrdenes.css';
@@ -207,6 +207,9 @@ export default function HistorialOrdenes({ user, onNavigate }) {
   const [sortConfig, setSortConfig] = useState({ field: 'id', direction: 'desc' });
   const [drawerOrder, setDrawerOrder] = useState(null);
   const [drawerClosing, setDrawerClosing] = useState(false);
+  const [drawerDetails, setDrawerDetails] = useState([]);     // OrderDetail[] del drawer
+  const [drawerDetailsLoading, setDrawerDetailsLoading] = useState(false);
+  const [savingDetailId, setSavingDetailId] = useState(null); // id del detalle que se está guardando
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [editOrder, setEditOrder]   = useState(null);
   const [editForm, setEditForm]     = useState({});
@@ -414,10 +417,77 @@ export default function HistorialOrdenes({ user, onNavigate }) {
   };
 
   // ── Drawer ──────────────────────────────────────────────────────────────────
-  const openDrawer  = (order) => { setDrawerClosing(false); setDrawerOrder(order); };
+  const openDrawer  = async (order) => {
+    setDrawerClosing(false);
+    setDrawerOrder(order);
+    setDrawerDetails([]);
+    setDrawerDetailsLoading(true);
+    try {
+      const dets = await getOrdenDetalle(order.id);
+      // Estado local editable inicial
+      setDrawerDetails(
+        (dets || []).map(d => ({
+          ...d,
+          _is_agency: !!d.is_agency,
+          _spent: Number(d.spent_per_order || 0),
+          _dirty: false,
+        }))
+      );
+    } catch {
+      setDrawerDetails([]);
+    } finally {
+      setDrawerDetailsLoading(false);
+    }
+  };
   const closeDrawer = () => {
     setDrawerClosing(true);
-    setTimeout(() => { setDrawerOrder(null); setDrawerClosing(false); }, 240);
+    setTimeout(() => { setDrawerOrder(null); setDrawerClosing(false); setDrawerDetails([]); }, 240);
+  };
+
+  // Guardar cambios de un detalle específico
+  const handleSaveDetail = async (detailId) => {
+    if (!drawerOrder) return;
+    const det = drawerDetails.find(d => d.id === detailId);
+    if (!det) return;
+    setSavingDetailId(detailId);
+    try {
+      const payload = {
+        is_agency:       det._is_agency,
+        spent_per_order: det._is_agency ? Number(det._spent || 0) : 0,
+      };
+      const res = await updateOrderDetail(drawerOrder.id, detailId, payload);
+      const ordenActualizada = res.orden || {};
+      // Actualizar drawer con nuevos totales del header
+      setDrawerOrder(prev => ({
+        ...prev,
+        total_amount:     ordenActualizada.order_value ?? prev.total_amount,
+        balance_due:      ordenActualizada.restante ?? prev.balance_due,
+        is_paid:          ordenActualizada.state_payment === 'Pagada',
+        estado_pago:      ordenActualizada.state_payment ?? prev.estado_pago,
+        agency_cost:      ordenActualizada.spent_per_order ?? prev.agency_cost,
+        net_income_value: ordenActualizada.net_income_value ?? prev.net_income_value,
+      }));
+      setDrawerDetails(prev => prev.map(d =>
+        d.id === detailId
+          ? { ...d, is_agency: det._is_agency, spent_per_order: payload.spent_per_order, _dirty: false }
+          : d
+      ));
+      const warns = res.warnings || [];
+      if (warns.includes('total_cambio_pagada')) {
+        showToast('El total cambió pero la orden ya estaba pagada. Verifica saldos.', 'info');
+      } else if (warns.includes('entregada')) {
+        showToast('Detalle actualizado (orden ya entregada — afecta reportes históricos)', 'info');
+      } else {
+        showToast('✓ Detalle actualizado', 'success');
+      }
+      // Refrescar la lista del historial en background
+      fetchOrders();
+      fetchStats();
+    } catch (err) {
+      showToast(err.message || 'Error al guardar detalle', 'error');
+    } finally {
+      setSavingDetailId(null);
+    }
   };
 
   const handleWhatsAppOrder = (order) => {
@@ -1127,12 +1197,104 @@ export default function HistorialOrdenes({ user, onNavigate }) {
               </div>
             </div>
 
-            {drawerOrder.items_description && (
-              <div className="ho-drawer-items">
-                <p className="ho-drawer-items-label">Prendas / Servicios:</p>
-                <p className="ho-drawer-items-text">{drawerOrder.items_description}</p>
-              </div>
-            )}
+            {/* ── Detalles editables (servicios de la orden) ────────────── */}
+            <div className="ho-drawer-items">
+              <p className="ho-drawer-items-label">
+                Servicios de la orden
+                {drawerOrder.order_status === 'Entregada' && (
+                  <span style={{ marginLeft: 8, fontSize: 11, color: '#B45309', background: '#FEF3C7', padding: '2px 8px', borderRadius: 4 }}>
+                    ⚠ orden entregada
+                  </span>
+                )}
+              </p>
+              {drawerOrder.consolidated_invoice_id ? (
+                <p style={{ fontSize: 12, color: '#888', fontStyle: 'italic' }}>
+                  Esta orden está consolidada en una factura B2B; los detalles se editan desde el flujo B2B.
+                </p>
+              ) : drawerDetailsLoading ? (
+                <p style={{ fontSize: 12, color: '#888' }}>Cargando detalles…</p>
+              ) : drawerDetails.length === 0 ? (
+                <p style={{ fontSize: 12, color: '#888' }}>
+                  {drawerOrder.items_description || 'Sin detalles registrados.'}
+                </p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+                  {drawerDetails.map(d => {
+                    const flagOrange = d._is_agency && (!d._spent || Number(d._spent) === 0);
+                    return (
+                      <div key={d.id ?? d.name}
+                        style={{
+                          padding: 10,
+                          borderRadius: 8,
+                          background: '#FAF8F3',
+                          borderLeft: flagOrange ? '4px solid #F59E0B' : '4px solid transparent',
+                        }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p style={{ fontSize: 13, fontWeight: 600, margin: 0 }}>{d.name}</p>
+                            <p style={{ fontSize: 11, color: '#888', margin: '2px 0 0 0' }}>
+                              {d.qty} × {fmtCOP(d.value)} = <strong>{fmtCOP(Number(d.qty) * Number(d.value))}</strong>
+                            </p>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8, flexWrap: 'wrap' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={d._is_agency}
+                              disabled={!d.id || savingDetailId === d.id}
+                              onChange={e => {
+                                const checked = e.target.checked;
+                                setDrawerDetails(prev => prev.map(x =>
+                                  x.id === d.id ? { ...x, _is_agency: checked, _dirty: true } : x
+                                ));
+                              }}
+                            />
+                            🏭 Agencia
+                          </label>
+                          {d._is_agency && (
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                              Costo agencia:
+                              <input
+                                type="number"
+                                min="0"
+                                step="100"
+                                value={d._spent}
+                                disabled={!d.id || savingDetailId === d.id}
+                                onChange={e => {
+                                  const val = e.target.value;
+                                  setDrawerDetails(prev => prev.map(x =>
+                                    x.id === d.id ? { ...x, _spent: val, _dirty: true } : x
+                                  ));
+                                }}
+                                style={{ width: 100, padding: '4px 6px', border: '1px solid #DDD', borderRadius: 4, fontSize: 12 }}
+                              />
+                            </label>
+                          )}
+                          {d._dirty && d.id && (
+                            <button
+                              onClick={() => handleSaveDetail(d.id)}
+                              disabled={savingDetailId === d.id}
+                              style={{
+                                marginLeft: 'auto', padding: '4px 12px', borderRadius: 4,
+                                background: '#10B981', color: '#FFF', border: 'none',
+                                fontSize: 12, cursor: 'pointer', fontWeight: 600,
+                              }}>
+                              {savingDetailId === d.id ? '⏳' : 'Guardar'}
+                            </button>
+                          )}
+                        </div>
+                        {flagOrange && (
+                          <p style={{ fontSize: 11, color: '#B45309', margin: '6px 0 0 0' }}>
+                            ⚠ Marcaste agencia pero no hay costo. Agrega el monto o desmarca.
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
 
             <div className="ho-drawer-footer">
               <button className="ho-btn ho-btn--primary" onClick={() => openEdit(drawerOrder)}>

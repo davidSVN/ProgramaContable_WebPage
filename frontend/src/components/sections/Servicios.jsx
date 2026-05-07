@@ -614,7 +614,22 @@ export default function Servicios() {
                           autoFocus
                         />
                       ) : (
-                        <span className="sv-service-name">{service.service_name}</span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <span className="sv-service-name">{service.service_name}</span>
+                          {Number(service.spent_per_service || 0) > 0 && (
+                            <span
+                              title="Costo de agencia automático al crear orden con este servicio"
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 3,
+                                padding: '1px 6px', fontSize: 10, fontWeight: 600,
+                                borderRadius: 10, background: '#FEF3C7', color: '#92400E',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              🏭 Agencia {fmtCOP(service.spent_per_service)}
+                            </span>
+                          )}
+                        </span>
                       )}
                     </td>
 

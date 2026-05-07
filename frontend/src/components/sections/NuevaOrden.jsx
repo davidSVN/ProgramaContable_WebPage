@@ -48,6 +48,21 @@ function isAgencyService(name = '') {
   return /agencia/i.test(name);
 }
 
+// Palabras clave que con frecuencia indican un servicio que requiere
+// costo de agencia. Usadas para alertar al empleado al crear la orden
+// si olvidó marcar el toggle "🏭 Agencia".
+const AGENCY_KEYWORDS = [
+  'cubrelecho', 'cubrelechos',
+  'tapete', 'tapetes',
+  'edredon', 'edredón', 'edredones',
+  'cobija', 'cobijas',
+];
+
+function matchesAgencyKeyword(name = '') {
+  const n = name.toLowerCase();
+  return AGENCY_KEYWORDS.some(k => n.includes(k));
+}
+
 /* ── WhatsApp Receipt Builder ───────────────────────────────── */
 function buildWhatsAppReceipt(payload, buildMessage) {
   const { negocio, orden } = payload;
@@ -831,12 +846,42 @@ function ItemsTable({ items, onUpdate, onRemove }) {
                   </span>
                 </td>
 
-                {/* Agency */}
+                {/* Agency — toggle + costo editable (no para descuentos) */}
                 <td>
-                  {item.is_agency ? (
-                    <span className="no-agency-badge">🏭 Agencia</span>
-                  ) : (
+                  {item.is_discount ? (
                     <span style={{ color: '#ccc' }}>—</span>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={!!item.is_agency}
+                          onChange={e => onUpdate(item.id, {
+                            is_agency: e.target.checked,
+                            // si quita agencia, limpiar costo
+                            agency_cost: e.target.checked ? (item.agency_cost || 0) : 0,
+                          })}
+                        />
+                        🏭 Agencia
+                      </label>
+                      {item.is_agency && (
+                        <input
+                          type="number"
+                          min="0"
+                          step="100"
+                          placeholder="Costo"
+                          value={item.agency_cost ?? 0}
+                          onChange={e => onUpdate(item.id, { agency_cost: parseFloat(e.target.value) || 0 })}
+                          aria-label="Costo de agencia"
+                          style={{
+                            width: 80, padding: '2px 4px', fontSize: 11,
+                            border: (item.is_agency && (!item.agency_cost || item.agency_cost === 0))
+                              ? '1px solid #F59E0B' : '1px solid #DDD',
+                            borderRadius: 4,
+                          }}
+                        />
+                      )}
+                    </div>
                   )}
                 </td>
               </tr>
@@ -1399,6 +1444,11 @@ export default function NuevaOrden() {
 
   // ── Add service to items ──────────────────────────────────
   const addItem = useCallback((service, qty = 1) => {
+    // Heredamos el costo de agencia configurado en el catálogo si existe.
+    // Si el servicio tiene spent_per_service > 0 lo marcamos como agencia
+    // automáticamente (mismo criterio que el backend en `crear_orden`).
+    const catalogSpent = Number(service.spent_per_service || 0);
+    const detectedAgency = isAgencyService(service.service_name) || catalogSpent > 0;
     const newItem = {
       id: uid(),
       service_id: service.service_id,
@@ -1406,7 +1456,8 @@ export default function NuevaOrden() {
       quantity: qty,
       unit_price: service.service_value,
       description: '',
-      is_agency: isAgencyService(service.service_name),
+      is_agency: detectedAgency,
+      agency_cost: detectedAgency ? catalogSpent : 0,
       is_extra: false,
       is_discount: false,
     };
@@ -1422,6 +1473,7 @@ export default function NuevaOrden() {
       unit_price: 0,
       description: '',
       is_agency: false,
+      agency_cost: 0,
       is_extra: true,
       is_discount: false,
     }, ...prev]);
@@ -1449,6 +1501,37 @@ export default function NuevaOrden() {
   // ── Submit ────────────────────────────────────────────────
   const handleSubmit = async () => {
     if (!canSubmit) return;
+
+    // ── Validación preventiva: keywords de agencia sin marcar ───────────────
+    // Si algún ítem tiene un nombre que sugiere que es de agencia
+    // (cubrelecho, tapete, edredón, cobija) y NO está marcado como agencia,
+    // pedimos confirmación al empleado para evitar olvidos sistemáticos.
+    const sospechosos = items.filter(i =>
+      !i.is_discount && !i.is_agency && matchesAgencyKeyword(i.service_name || '')
+    );
+    if (sospechosos.length > 0) {
+      const lista = sospechosos.map(i => `• ${i.service_name}`).join('\n');
+      const ok = window.confirm(
+        `Los siguientes servicios normalmente tienen costo de agencia:\n\n${lista}\n\n` +
+        `¿Confirmas que NINGUNO tiene costo de agencia?\n\n` +
+        `(Si SÍ tienen costo, cancela y marca el toggle "🏭 Agencia" en cada uno).`
+      );
+      if (!ok) return;
+    }
+
+    // Validación: agencia marcada con costo en cero
+    const agenciaSinCosto = items.filter(i =>
+      i.is_agency && (!i.agency_cost || Number(i.agency_cost) === 0)
+    );
+    if (agenciaSinCosto.length > 0) {
+      const lista = agenciaSinCosto.map(i => `• ${i.service_name}`).join('\n');
+      const ok = window.confirm(
+        `Los siguientes servicios están marcados como agencia pero con costo en $0:\n\n${lista}\n\n` +
+        `¿Quieres continuar de todos modos? (Podrás corregir el costo después desde Historial).`
+      );
+      if (!ok) return;
+    }
+
     setIsCreating(true);
     try {
       const serviciosData = items.map(i => ({
