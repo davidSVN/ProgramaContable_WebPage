@@ -63,6 +63,20 @@ function matchesAgencyKeyword(name = '') {
   return AGENCY_KEYWORDS.some(k => n.includes(k));
 }
 
+// Helper compartido: dado un servicio del catálogo + datos del item,
+// devuelve un objeto consistente con `is_agency` y `agency_cost` ya
+// resueltos según el spent_per_service del catálogo. Reusado por
+// `addItem` (panel lateral) y `ServiceSearchInput.doAdd` (barra principal).
+function buildAgencyFields(service, isExtra = false) {
+  if (isExtra) return { is_agency: false, agency_cost: 0 };
+  const catalogSpent = Number(service?.spent_per_service || 0);
+  const detected = isAgencyService(service?.service_name || '') || catalogSpent > 0;
+  return {
+    is_agency:   detected,
+    agency_cost: detected ? catalogSpent : 0,
+  };
+}
+
 /* ── WhatsApp Receipt Builder ───────────────────────────────── */
 function buildWhatsAppReceipt(payload, buildMessage) {
   const { negocio, orden } = payload;
@@ -372,6 +386,11 @@ function ServiceSearchInput({ services, onAddItem, abbreviations = {} }) {
       ? (parseFloat(extraPrice) || 0)
       : selected.service_value;
 
+    // Resolver is_agency y agency_cost desde el catálogo cuando aplica.
+    // Si el servicio del catálogo trae spent_per_service > 0, lo
+    // heredamos al item — el empleado no tiene que volver a escribirlo.
+    const agencyFields = buildAgencyFields(selected, selected.isExtra);
+
     onAddItem({
       id: uid(),
       service_id: selected.service_id,
@@ -381,7 +400,7 @@ function ServiceSearchInput({ services, onAddItem, abbreviations = {} }) {
       quantity: parseFloat(cantidad) || 1,
       unit_price: unitPrice,
       description,
-      is_agency: selected.isAgency || false,
+      ...agencyFields,
       is_extra: selected.isExtra,
       is_discount: false,
     });
@@ -1444,11 +1463,8 @@ export default function NuevaOrden() {
 
   // ── Add service to items ──────────────────────────────────
   const addItem = useCallback((service, qty = 1) => {
-    // Heredamos el costo de agencia configurado en el catálogo si existe.
-    // Si el servicio tiene spent_per_service > 0 lo marcamos como agencia
-    // automáticamente (mismo criterio que el backend en `crear_orden`).
-    const catalogSpent = Number(service.spent_per_service || 0);
-    const detectedAgency = isAgencyService(service.service_name) || catalogSpent > 0;
+    // Helper compartido: hereda is_agency y agency_cost desde el catálogo.
+    const agencyFields = buildAgencyFields(service, false);
     const newItem = {
       id: uid(),
       service_id: service.service_id,
@@ -1456,8 +1472,7 @@ export default function NuevaOrden() {
       quantity: qty,
       unit_price: service.service_value,
       description: '',
-      is_agency: detectedAgency,
-      agency_cost: detectedAgency ? catalogSpent : 0,
+      ...agencyFields,
       is_extra: false,
       is_discount: false,
     };
